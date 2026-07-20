@@ -85,6 +85,13 @@
   .field-note-preview { font-size: 14px; color: var(--text2); background: var(--bg2); border-radius: 6px; padding: 6px 8px; margin: 6px 0; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #area-map.leaflet-container, #area-map .leaflet-grab, #area-map .leaflet-interactive { cursor: pointer !important; }
   #area-map.leaflet-dragging .leaflet-grab { cursor: pointer !important; }
+  /* Leaflet's internal panes/controls use z-index up to 1000, which beat
+     the sticky header's z-index:10 since these map containers never
+     otherwise form their own stacking context -- the zoom buttons and
+     tile pane would render on top of the header while scrolling.
+     isolation:isolate traps all of Leaflet's z-index values inside each
+     map container so they can never escape above page-level chrome. */
+  #fields-map-mini, #fields-map-full, #area-map, #farm-map { isolation: isolate; }
   .progress-bar { background: var(--border); border-radius: 4px; height: 5px; margin-top: 8px; overflow: hidden; }
   .progress-fill { height: 100%; border-radius: 4px; }
   .panel { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 20px; }
