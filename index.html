@@ -2262,8 +2262,9 @@ function getStatus(d) {
   if (!d || (!d.yield && !d.moisture && !d.pest && !d.leafcolor && !d.height)) {
     return (d && d.notes) ? 'logged' : 'none';
   }
+  const moistureStatus = moistureStatusInfo(d).status;
   if (d.pest==='severe' || (d.yield && parseFloat(d.yield)<2) || d.leafcolor==='yellow') return 'bad';
-  if (d.pest==='mild' || d.moisture==='dry' || d.moisture==='wet' || (d.yield && parseFloat(d.yield)<4) || d.leafcolor==='slight_yellow' || d.height==='lt1') return 'warn';
+  if (d.pest==='mild' || moistureStatus==='dry' || moistureStatus==='wet' || (d.yield && parseFloat(d.yield)<4) || d.leafcolor==='slight_yellow' || d.height==='lt1') return 'warn';
   return 'good';
 }
 function renderOverview() {
