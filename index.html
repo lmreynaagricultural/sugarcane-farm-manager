@@ -193,6 +193,9 @@
   </div>
   <div style="display:flex;align-items:center;gap:10px;">
     <div class="header-meta" id="last-saved">No data saved yet</div>
+    <button id="hdr-sync-btn" onclick="syncToCloud()" title="Sync now" style="display:none;background:none;border:1px solid var(--border2);border-radius:var(--radius);padding:5px 8px;color:var(--text2);cursor:pointer;align-items:center;">
+      <i class="ti ti-refresh" style="font-size:16px;" aria-hidden="true"></i>
+    </button>
     <button id="hdr-account-btn" onclick="openAccountPanel()" style="background:none;border:1px solid var(--border2);border-radius:var(--radius);padding:5px 10px;font-size:13px;color:var(--text2);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;">
       <i class="ti ti-user-circle" style="font-size:16px;" aria-hidden="true"></i>
       <span id="hdr-account-label">Sign in</span>
@@ -1142,17 +1145,20 @@ function onSignedOut() {
 }
 
 function updateAccountHeader() {
-  const btn   = document.getElementById('hdr-account-btn');
-  const label = document.getElementById('hdr-account-label');
+  const btn     = document.getElementById('hdr-account-btn');
+  const label   = document.getElementById('hdr-account-label');
+  const syncBtn = document.getElementById('hdr-sync-btn');
   if (!btn || !label) return;
   if (currentUser) {
     label.textContent = currentUser.email.split('@')[0];
     btn.style.color = 'var(--green)';
     btn.style.borderColor = 'var(--green)';
+    if (syncBtn) syncBtn.style.display = 'flex';
   } else {
     label.textContent = 'Sign in';
     btn.style.color = '';
     btn.style.borderColor = '';
+    if (syncBtn) syncBtn.style.display = 'none';
   }
 }
 
@@ -1444,8 +1450,10 @@ async function apiCall(path, method, body) {
 
 async function syncToCloud() {
   if (!currentUser) return;
-  if (syncPending) return; // avoid overlapping syncs (e.g. onSignedIn + a debounced save firing together)
+  if (syncPending) return; // avoid overlapping syncs (e.g. onSignedIn + a scheduled save firing together)
   syncPending = true;
+  clearTimeout(touchSaved._t);
+  touchSaved._t = null;
   const saved = document.getElementById('last-saved');
   if (saved) saved.textContent = 'Syncing…';
   try {
@@ -1802,9 +1810,12 @@ function persistEvents() { localStorage.setItem('sc_events', JSON.stringify(even
 function persistRoster() { localStorage.setItem('sc_roster', JSON.stringify(roster)); touchSaved(); }
 function touchSaved() {
   document.getElementById('last-saved').textContent = 'Last saved: ' + new Date().toLocaleTimeString();
-  // Debounced cloud sync — waits 3s after last save to batch rapid edits
-  clearTimeout(touchSaved._t);
-  touchSaved._t = setTimeout(() => syncToCloud(), 3000);
+  // Auto cloud sync at most every 30 min — schedules once per batch of edits
+  // instead of resetting on every keystroke, to avoid syncing constantly on
+  // slow/metered connections. Use the header "Sync now" button to sync sooner.
+  if (!touchSaved._t) {
+    touchSaved._t = setTimeout(() => { touchSaved._t = null; syncToCloud(); }, 30 * 60 * 1000);
+  }
 }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
