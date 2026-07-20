@@ -1319,6 +1319,29 @@ async function authSignInFromModal() {
   closeConsentModal();
 }
 
+/* Separate from authSignInFromModal() -- the account panel's sign-in form
+   used to share id="auth-email"/"auth-password"/"auth-error" with the
+   consent modal's fields, which are always present in the DOM (just
+   hidden). getElementById always resolved to the hidden consent-modal
+   copies, so this form silently read empty values and showed no error.
+   Uses its own ap-* prefixed ids to avoid the collision. */
+async function authSignInFromAccountPanel() {
+  const sb = getSupabase();
+  if (!sb) { showFormError('ap-auth-error', 'Cloud sync not configured.'); return; }
+  const email = document.getElementById('ap-auth-email').value.trim();
+  const pass  = document.getElementById('ap-auth-password').value;
+  if (!email || !pass) { showFormError('ap-auth-error', 'Enter your email and password.'); return; }
+  const btn = document.querySelector('#account-panel-content .btn-primary');
+  if (btn) { btn.textContent = 'Signing in…'; btn.disabled = true; }
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) {
+    showFormError('ap-auth-error', error.message);
+    if (btn) { btn.textContent = 'Sign in'; btn.disabled = false; }
+    return;
+  }
+  closeAccountPanel();
+}
+
 /* ── Modals ──────────────────────────────────────────────────────────── */
 let _consentShown = false;
 function maybeShowConsentModal() {
@@ -1363,14 +1386,14 @@ function renderAccountPanelContent() {
     el.innerHTML = `
       <h3 style="font-size:17px;font-weight:500;margin-bottom:12px;">Sign in to your account</h3>
       <div class="form-grid" style="margin-bottom:14px;">
-        <div class="form-group"><label class="form-label">Email</label><input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email"></div>
-        <div class="form-group"><label class="form-label">Password</label><input type="password" id="auth-password" placeholder="Password" autocomplete="current-password"></div>
+        <div class="form-group"><label class="form-label">Email</label><input type="email" id="ap-auth-email" placeholder="you@example.com" autocomplete="email"></div>
+        <div class="form-group"><label class="form-label">Password</label><input type="password" id="ap-auth-password" placeholder="Password" autocomplete="current-password"></div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="authSignInFromModal()"><i class="ti ti-login" style="font-size:17px;vertical-align:-2px;margin-right:4px;"></i>Sign in</button>
+        <button class="btn btn-primary" onclick="authSignInFromAccountPanel()"><i class="ti ti-login" style="font-size:17px;vertical-align:-2px;margin-right:4px;"></i>Sign in</button>
         <button class="btn" onclick="closeAccountPanel();document.getElementById('consent-modal').style.display='flex';">Create account</button>
       </div>
-      <p class="form-error" id="auth-error"></p>`;
+      <p class="form-error" id="ap-auth-error"></p>`;
   }
 }
 
