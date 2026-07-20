@@ -1854,8 +1854,13 @@ function recentRainfallMm(sinceISO) {
   if (!sinceISO) return 0;
   const map = rainMapFromWeather();
   const today = todayISO();
-  let total = 0, d = sinceISO;
-  while (d <= today) { total += map[d] || 0; d = addDaysISO(d, 1); }
+  // Cap the walk at 60 days -- a malformed or very old lastIrrigated date
+  // would otherwise loop for years across every field on every render.
+  // No legitimate irrigation-interval check needs more than a couple months.
+  const earliest = addDaysISO(today, -60);
+  let total = 0, d = sinceISO > earliest ? sinceISO : earliest;
+  let guard = 0;
+  while (d <= today && guard < 61) { total += map[d] || 0; d = addDaysISO(d, 1); guard++; }
   return total;
 }
 
@@ -2451,9 +2456,6 @@ function renderFieldGrid() {
     const workersToday = workers.filter(w => w.field===f && w.date===today).length;
     const fieldExpenseTotal = expenses.filter(e => e.field===f).reduce((s,e)=>s+parseFloat(e.amount||0),0);
     const fEsc = f.replace(/'/g,"\\'");
-    const advisory = suggestNextAction(d, {});
-    const advisoryColor = advisory ? ({high:'var(--red)', medium:'var(--amber)', info:'var(--blue)'}[advisory.priority]) : '';
-    const advisoryHTML = advisory ? `<div class="field-note-preview" style="border-left:3px solid ${advisoryColor};white-space:normal;">${advisory.icon} ${advisory.message}</div>` : '';
     return `<div class="${cls}" data-field-card="${f.replace(/"/g,'&quot;')}" ondblclick="selectFieldToEdit('${fEsc}')" title="Double-click to edit">
       <div class="field-header">
         <span class="field-name">${f}</span>
@@ -2465,7 +2467,6 @@ function renderFieldGrid() {
       <div class="field-row"><span>Area</span><span>${area}</span></div>
       <div class="field-row"><span>Workers today</span><span>${workersToday}</span></div>
       ${fieldCardRows(d)}
-      ${advisoryHTML}
       ${notePreview}
       <div class="field-row" style="margin-top:4px;padding-top:8px;border-top:0.5px solid var(--border);"><span>Total expenses</span><span>${peso(fieldExpenseTotal)}</span></div>
       <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${col};"></div></div>
