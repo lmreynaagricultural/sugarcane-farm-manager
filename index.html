@@ -421,7 +421,12 @@
   <div id="tab-fields" style="display:none;">
     <div class="panel-title" style="margin-bottom:10px;">
       <p class="section-label" style="margin-bottom:0;">All fields — tap a card to view or edit</p>
-      <button class="btn btn-sm" onclick="addField()"><i class="ti ti-plus" style="font-size:17px;vertical-align:-2px;margin-right:3px;"></i>Add field</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select id="bulk-stage-select" class="stage-select badge-none" style="max-width:200px;" title="Set every field's stage at once" onchange="bulkSetAllFieldsStage(this.value); this.value='';">
+          <option value="" selected>Set all fields' stage…</option>
+        </select>
+        <button class="btn btn-sm" onclick="addField()"><i class="ti ti-plus" style="font-size:17px;vertical-align:-2px;margin-right:3px;"></i>Add field</button>
+      </div>
     </div>
     <div class="field-grid" id="field-grid"></div>
 
@@ -2450,7 +2455,20 @@ function changeFieldStage(fieldName, newStage) {
     if (typeof renderMapFieldSummaryPanel === 'function' && typeof mapSummaryField !== 'undefined' && mapSummaryField === fieldName) renderMapFieldSummaryPanel(fieldName);
   }
 }
+/* Bulk-sets every field to the same stage in one action, reusing the same
+   changeFieldStage() path each field's own dropdown uses -- so it's exactly
+   as if you'd clicked through every field manually. Individual fields can
+   still be adjusted afterward for ones that are actually at a different
+   stage; this is a shortcut, not a lock. */
+function bulkSetAllFieldsStage(newStage) {
+  if (!newStage) return;
+  const stageLabel = (STAGE_MAP[newStage] && STAGE_MAP[newStage].label) || newStage;
+  if (!confirm(`Set all ${settings.fields.length} fields to "${stageLabel}"? You can still change individual fields afterward.`)) return;
+  settings.fields.forEach(f => changeFieldStage(f, newStage));
+}
 function renderFieldGrid() {
+  const bulkSelect = document.getElementById('bulk-stage-select');
+  if (bulkSelect && bulkSelect.children.length <= 1) bulkSelect.insertAdjacentHTML('beforeend', stageSelectOptions(''));
   document.getElementById('field-grid').innerHTML = settings.fields.map(f=>{
     const d = data[f];
     const stageKey = (d && d.stage) || 'resting_post_harvest';
