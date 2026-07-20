@@ -2350,13 +2350,16 @@ function cycleReferenceDate(d) {
   if (d && d.plant) return { date: d.plant, label: 'Days since planting' };
   return null;
 }
-/* The farmer's own moisture reading is the default -- but if today's
-   recorded rainfall exceeds 10mm, that's a strong enough physical signal
-   to show as adequate regardless of a stale prior reading. */
+/* The farmer's own moisture reading is the default, but real rainfall
+   data can override a stale reading in either direction: >10mm recorded
+   today reads as adequate; effectively no rain (<=5mm) in the last 14
+   days reads as dry, regardless of what was last manually entered. */
 function moistureDisplay(d) {
   const manualLabel = d && d.moisture ? ({dry:'Dry',ok:'Adequate',wet:'Waterlogged'}[d.moisture]) : null;
   const todayRainMm = rainMapFromWeather()[todayISO()] || 0;
   if (todayRainMm > 10) return `Adequate (${Math.round(todayRainMm)}mm rain today)`;
+  const last14DaysMm = recentRainfallMm(addDaysISO(todayISO(), -14));
+  if (last14DaysMm <= 5) return 'Dry (no rain in 2 weeks)';
   return manualLabel || '—';
 }
 function fieldCardRows(d) {
