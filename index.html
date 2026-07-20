@@ -2299,7 +2299,7 @@ function renderOverview() {
         scales:{y:{beginAtZero:true,grid:{color:'rgba(128,128,128,0.08)'},ticks:{font:{size:11}}},
           x:{ticks:{font:{size:10},autoSkip:false,maxRotation:45},grid:{display:false}}}}});
     const mCounts = {Dry:0,Adequate:0,Waterlogged:0,'No data':0};
-    F.forEach(f=>{ const m=data[f]&&data[f].moisture; if(m==='dry')mCounts.Dry++; else if(m==='ok')mCounts.Adequate++; else if(m==='wet')mCounts.Waterlogged++; else mCounts['No data']++; });
+    F.forEach(f=>{ const m=moistureStatusInfo(data[f]).status; if(m==='dry')mCounts.Dry++; else if(m==='ok')mCounts.Adequate++; else if(m==='wet')mCounts.Waterlogged++; else mCounts['No data']++; });
     const mCtx = document.getElementById('moistureChart').getContext('2d');
     if (moistureChart) moistureChart.destroy();
     moistureChart = new Chart(mCtx,{type:'doughnut',data:{labels:Object.keys(mCounts),datasets:[{data:Object.values(mCounts),backgroundColor:['#E24B4A','#2FC9A4','#378ADD','#B4B2A9'],borderWidth:2,borderColor:'#fff'}]},
@@ -2353,14 +2353,21 @@ function cycleReferenceDate(d) {
 /* The farmer's own moisture reading is the default, but real rainfall
    data can override a stale reading in either direction: >10mm recorded
    today reads as adequate; effectively no rain (<=5mm) in the last 14
-   days reads as dry, regardless of what was last manually entered. */
-function moistureDisplay(d) {
-  const manualLabel = d && d.moisture ? ({dry:'Dry',ok:'Adequate',wet:'Waterlogged'}[d.moisture]) : null;
+   days reads as dry, regardless of what was last manually entered.
+   Single source of truth for both the field card's Moisture line and
+   the Overview tab's soil moisture chart -- they'd disagree otherwise. */
+function moistureStatusInfo(d) {
   const todayRainMm = rainMapFromWeather()[todayISO()] || 0;
-  if (todayRainMm > 10) return `Adequate (${Math.round(todayRainMm)}mm rain today)`;
+  if (todayRainMm > 10) return { status: 'ok', note: `${Math.round(todayRainMm)}mm rain today` };
   const last14DaysMm = recentRainfallMm(addDaysISO(todayISO(), -14));
-  if (last14DaysMm <= 5) return 'Dry (no rain in 2 weeks)';
-  return manualLabel || '—';
+  if (last14DaysMm <= 5) return { status: 'dry', note: 'no rain in 2 weeks' };
+  return { status: (d && d.moisture) || null, note: null };
+}
+function moistureDisplay(d) {
+  const info = moistureStatusInfo(d);
+  if (!info.status) return '—';
+  const label = { dry: 'Dry', ok: 'Adequate', wet: 'Waterlogged' }[info.status];
+  return info.note ? `${label} (${info.note})` : label;
 }
 function fieldCardRows(d) {
   const stageKey = (d && d.stage) || 'resting_post_harvest';
