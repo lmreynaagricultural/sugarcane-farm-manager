@@ -6,7 +6,7 @@
 <title>Sugarcane Farm Manager</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1D9E75">
+<meta name="theme-color" content="#2FC9A4">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -17,29 +17,33 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --green: #1D9E75; --green-dark: #0F6E56; --green-light: #E1F5EE; --green-text: #085041;
-    --amber: #EF9F27; --amber-light: #FAEEDA; --amber-text: #854F0B;
+    /* Brand palette (Lance Reyna brand guide v1.0) — navy primary, teal for
+       growth/positive/CTA, burnt orange for warnings/urgent. Red and blue
+       are kept as app-specific functional colors (destructive actions,
+       rain/weather) since the brand guide doesn't define them. */
+    --green: #2FC9A4; --green-dark: #24A882; --green-light: #E3F9F3; --green-text: #0B6B54;
+    --amber: #C85A0A; --amber-light: #FBEADD; --amber-text: #7A3D08;
     --red: #E24B4A; --red-light: #FCEBEB; --red-text: #A32D2D;
     --blue: #378ADD; --blue-light: #E4F0FC; --blue-text: #1B5FA0;
     --gray: #888780; --gray-light: #F1EFE8; --gray-text: #444441;
-    --bg: #ffffff; --bg2: #f5f5f3; --bg3: #efefed;
-    --text: #1a1a18; --text2: #5f5e5a; --text3: #888780;
-    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.2);
-    --radius: 8px; --radius-lg: 12px;
+    --bg: #ffffff; --bg2: #F5F3F0; --bg3: #F5F3F0;
+    --text: #152A4A; --text2: #5A6B80; --text3: #888780;
+    --border: rgba(21,42,74,0.10); --border2: #D3D1C7;
+    --radius: 6px; --radius-lg: 12px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #1c1c1a; --bg2: #252523; --bg3: #2e2e2b;
       --text: #f0efea; --text2: #b4b2a9; --text3: #888780;
       --border: rgba(255,255,255,0.12); --border2: rgba(255,255,255,0.22);
-      --green-light: #04342C; --green-text: #9FE1CB;
-      --amber-light: #412402; --amber-text: #FAC775;
+      --green-light: #063D33; --green-text: #7FE3C9;
+      --amber-light: #3D2007; --amber-text: #F0A868;
       --red-light: #501313; --red-text: #F7C1C1;
       --blue-light: #0B2A44; --blue-text: #9CC7F2;
       --gray-light: #2C2C2A; --gray-text: #D3D1C7;
     }
   }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg3); color: var(--text); font-size: 20px; min-height: 100vh; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg3); color: var(--text); font-size: 20px; min-height: 100vh; }
   header { background: var(--bg); border-bottom: 0.5px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; flex-wrap: wrap; gap: 8px; }
   .logo { display: flex; align-items: center; gap: 10px; font-size: 21px; font-weight: 500; }
   .logo i { font-size: 29px; color: var(--green); }
@@ -93,7 +97,7 @@
   .variety-opt { padding: 10px 14px; font-size:15px; cursor: pointer; color: var(--text); border-bottom: 0.5px solid var(--border); }
   .variety-opt:last-child { border-bottom: none; }
   .variety-opt:hover, .variety-opt.active { background: var(--green-light); color: var(--green-text); }
-  .variety-opt mark { background: none; color: var(--green); font-weight: 600; }
+  .variety-opt mark { background: none; color: var(--green); font-weight: 500; }
   .two-col-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; align-items: stretch; margin-bottom: 20px; }
   .two-col-panels > .panel { margin-bottom: 0; }
   .two-col-panels > div { display: flex; flex-direction: column; gap: 20px; }
@@ -129,7 +133,7 @@
   .table-wrap { overflow-x: auto; }
   .two-col { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; align-items: start; }
   @media (max-width: 760px) { .two-col { grid-template-columns: 1fr; } }
-  .panel-prominent { border-color: var(--border2); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .panel-prominent { border-color: var(--border2); }
   .panel-prominent .panel-title { font-size: 22px; }
   .cal-grid-lg .cal-cell { font-size: 17px; padding: 6px; border-radius: 8px; min-height: 76px; }
   .cal-grid-lg .cal-daynum { font-size: 17px; }
@@ -253,7 +257,7 @@
       <div class="legend" style="margin-top:10px;">
         <div class="legend-item"><span class="cal-dot" style="background:#E24B4A;"></span>Overdue task</div>
         <div class="legend-item"><span class="cal-dot" style="background:#378ADD;"></span>Upcoming task</div>
-        <div class="legend-item"><span class="cal-dot" style="background:#1D9E75;"></span>Done</div>
+        <div class="legend-item"><span class="cal-dot" style="background:#2FC9A4;"></span>Done</div>
         <div class="legend-item"><span class="swatch swatch-round" style="background:var(--blue-text);"></span>Rain recorded</div>
         <div class="legend-item"><span class="swatch swatch-round" style="background:transparent;border:1.5px solid var(--blue-text);"></span>Rain forecast</div>
         <div class="legend-item"><span class="swatch" style="background:var(--red-text);"></span>Logged event</div>
@@ -356,8 +360,8 @@
         <canvas id="yieldChart" role="img" aria-label="Bar chart showing yield in tons per acre for each field">Log yield data to see this chart.</canvas>
       </div>
       <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#1D9E75;"></div><span id="yield-legend-good">Good (≥4 t/ac)</span></div>
-        <div class="legend-item"><div class="legend-dot" style="background:#EF9F27;"></div><span id="yield-legend-watch">Watch (2–4 t/ac)</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2FC9A4;"></div><span id="yield-legend-good">Good (≥4 t/ac)</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div><span id="yield-legend-watch">Watch (2–4 t/ac)</span></div>
         <div class="legend-item"><div class="legend-dot" style="background:#E24B4A;"></div><span id="yield-legend-low">Low (&lt;2 t/ac)</span></div>
         <div class="legend-item"><div class="legend-dot" style="background:#B4B2A9;"></div>No data</div>
       </div>
@@ -385,8 +389,8 @@
       <div class="legend" style="margin-top:12px;">
         <div class="legend-item"><div class="legend-dot" style="background:#888780;"></div>Land prep</div>
         <div class="legend-item"><div class="legend-dot" style="background:#378ADD;"></div>Planting</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#1D9E75;"></div>Growing</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#EF9F27;"></div>Harvest</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2FC9A4;"></div>Growing</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>Harvest</div>
       </div>
     </div>
     <div class="panel" id="map-recommendations-panel">
@@ -992,7 +996,7 @@
     <!-- Header -->
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:38px;margin-bottom:8px;">🌿</div>
-      <h2 style="font-size:21px;font-weight:700;color:var(--text);margin-bottom:6px;">Keep your farm data safe</h2>
+      <h2 style="font-size:21px;font-weight:500;color:var(--text);margin-bottom:6px;">Keep your farm data safe</h2>
       <p style="font-size:14px;color:var(--text2);line-height:1.6;">Sign in once — your data syncs to the cloud automatically. Access from any device, never lose your records.</p>
     </div>
 
@@ -1204,7 +1208,7 @@ async function authSignUp() {
       if (modal) modal.querySelector('.panel, div').innerHTML = `
         <div style="text-align:center;padding:20px 0;">
           <div style="font-size:48px;margin-bottom:12px;">📧</div>
-          <h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:10px;">Check your email</h2>
+          <h2 style="font-size:20px;font-weight:500;color:var(--text);margin-bottom:10px;">Check your email</h2>
           <p style="font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:20px;">
             We sent a confirmation link to <b>${email}</b>.<br>
             Click it to activate your account, then come back and sign in.
@@ -1344,10 +1348,10 @@ function renderAccountPanelContent() {
   if (!el) return;
   if (currentUser) {
     el.innerHTML = `
-      <h3 style="font-size:17px;font-weight:600;margin-bottom:12px;">Your account</h3>
+      <h3 style="font-size:17px;font-weight:500;margin-bottom:12px;">Your account</h3>
       <div class="field-row"><span>Farm</span><span>${settings.farmName || 'My Sugarcane Farm'}</span></div>
       <div class="field-row"><span>Email</span><span>${currentUser.email}</span></div>
-      <div class="field-row"><span>Plan</span><span style="color:var(--green);font-weight:600;">Free</span></div>
+      <div class="field-row"><span>Plan</span><span style="color:var(--green);font-weight:500;">Free</span></div>
       <div class="field-row"><span>Last sync</span><span id="ap-last-sync">—</span></div>
       <div class="btn-row" style="margin-top:16px;">
         <button class="btn btn-primary" onclick="syncToCloud()"><i class="ti ti-refresh" style="font-size:17px;vertical-align:-2px;margin-right:4px;"></i>Sync now</button>
@@ -1357,7 +1361,7 @@ function renderAccountPanelContent() {
     if (ls) document.getElementById('ap-last-sync').textContent = new Date(ls).toLocaleString();
   } else {
     el.innerHTML = `
-      <h3 style="font-size:17px;font-weight:600;margin-bottom:12px;">Sign in to your account</h3>
+      <h3 style="font-size:17px;font-weight:500;margin-bottom:12px;">Sign in to your account</h3>
       <div class="form-grid" style="margin-bottom:14px;">
         <div class="form-group"><label class="form-label">Email</label><input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email"></div>
         <div class="form-group"><label class="form-label">Password</label><input type="password" id="auth-password" placeholder="Password" autocomplete="current-password"></div>
@@ -1379,7 +1383,7 @@ function renderCloudStatus() {
   if (currentUser) {
     const ls = localStorage.getItem('sc_last_sync');
     el.innerHTML = `
-      <div class="field-row"><span>Status</span><span style="color:var(--green);font-weight:600;">● Connected</span></div>
+      <div class="field-row"><span>Status</span><span style="color:var(--green);font-weight:500;">● Connected</span></div>
       <div class="field-row"><span>Account</span><span>${currentUser.email}</span></div>
       <div class="field-row"><span>Last sync</span><span>${ls ? new Date(ls).toLocaleString() : 'Never'}</span></div>
       <div class="btn-row" style="margin-top:12px;">
@@ -1692,7 +1696,7 @@ const STAGES = [
 ];
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 const PHASE_BADGE = {prep:'badge-none', planting:'badge-blue', growing:'badge-good', harvest:'badge-warn'};
-const PHASE_COLOR = {prep:'#888780', planting:'#378ADD', growing:'#1D9E75', harvest:'#EF9F27'};
+const PHASE_COLOR = {prep:'#888780', planting:'#378ADD', growing:'#2FC9A4', harvest:'#C85A0A'};
 /* Crop height in real feet ranges rather than vague Short/Normal/Tall labels. */
 const HEIGHT_OPTIONS = [
   {value:'lt1', label:'Under 1 ft'},
@@ -2070,7 +2074,7 @@ function renderOverview() {
   document.getElementById('yield-legend-low').textContent = `Low (<${smartRound(yieldAcreToDisplayUnit(2))} t/${unitAbbr})`;
 
   const vals = F.map(f=>data[f]&&data[f].yield? yieldAcreToDisplayUnit(parseFloat(data[f].yield)) : 0);
-  const colors = F.map(f=>{ const s=getStatus(data[f]); return s==='good'?'#1D9E75':s==='bad'?'#E24B4A':s==='warn'?'#EF9F27':'#B4B2A9'; });
+  const colors = F.map(f=>{ const s=getStatus(data[f]); return s==='good'?'#2FC9A4':s==='bad'?'#E24B4A':s==='warn'?'#C85A0A':'#B4B2A9'; });
   try {
     const ctx = document.getElementById('yieldChart').getContext('2d');
     if (yieldChart) yieldChart.destroy();
@@ -2082,7 +2086,7 @@ function renderOverview() {
     F.forEach(f=>{ const m=data[f]&&data[f].moisture; if(m==='dry')mCounts.Dry++; else if(m==='ok')mCounts.Adequate++; else if(m==='wet')mCounts.Waterlogged++; else mCounts['No data']++; });
     const mCtx = document.getElementById('moistureChart').getContext('2d');
     if (moistureChart) moistureChart.destroy();
-    moistureChart = new Chart(mCtx,{type:'doughnut',data:{labels:Object.keys(mCounts),datasets:[{data:Object.values(mCounts),backgroundColor:['#E24B4A','#1D9E75','#378ADD','#B4B2A9'],borderWidth:2,borderColor:'#fff'}]},
+    moistureChart = new Chart(mCtx,{type:'doughnut',data:{labels:Object.keys(mCounts),datasets:[{data:Object.values(mCounts),backgroundColor:['#E24B4A','#2FC9A4','#378ADD','#B4B2A9'],borderWidth:2,borderColor:'#fff'}]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:12},padding:16}}}}});
   } catch(e) { /* Chart.js unavailable offline on first load — data entry still works fine */ }
 
@@ -2474,7 +2478,7 @@ function showCalSubtab(t) {
   if (calSubtabOpen === 'task') onTaskCategoryChange();
 }
 function taskColor(t) {
-  if (t.done) return '#1D9E75';
+  if (t.done) return '#2FC9A4';
   if (t.date < todayISO()) return '#E24B4A';
   return '#378ADD';
 }
@@ -2723,14 +2727,14 @@ function renderExpenseChart() {
   try {
     const ctx = document.getElementById('expenseChart').getContext('2d');
     if (expenseChart) expenseChart.destroy();
-    expenseChart = new Chart(ctx,{type:'bar',data:{labels:Object.keys(totals),datasets:[{data:Object.values(totals),backgroundColor:'#1D9E75',borderRadius:4}]},
+    expenseChart = new Chart(ctx,{type:'bar',data:{labels:Object.keys(totals),datasets:[{data:Object.values(totals),backgroundColor:'#2FC9A4',borderRadius:4}]},
       options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{ticks:{font:{size:11}}}}}});
   } catch(e) {}
 }
 let fieldExpenseChartInst = null;
 let fieldChartView = 'total';
-const FIELD_CHART_COLORS = ['#1D9E75','#378ADD','#EF9F27','#E24B4A','#9B59B6','#2ECC71','#E67E22','#1ABC9C','#3498DB','#E74C3C','#8E44AD','#F39C12','#16A085','#2980B9','#C0392B'];
-const CATEGORY_COLORS = {'Labor':'#1D9E75','Fertilizer':'#378ADD','Pesticide/Herbicide':'#EF9F27','Irrigation':'#3498DB','Equipment':'#9B59B6','Fuel':'#E67E22','Seeds/Cuttings':'#2ECC71','Miscellaneous':'#B4B2A9','Other':'#888780'};
+const FIELD_CHART_COLORS = ['#2FC9A4','#378ADD','#C85A0A','#E24B4A','#9B59B6','#2ECC71','#E67E22','#1ABC9C','#3498DB','#E74C3C','#8E44AD','#F39C12','#16A085','#2980B9','#C0392B'];
+const CATEGORY_COLORS = {'Labor':'#2FC9A4','Fertilizer':'#378ADD','Pesticide/Herbicide':'#C85A0A','Irrigation':'#3498DB','Equipment':'#9B59B6','Fuel':'#E67E22','Seeds/Cuttings':'#2ECC71','Miscellaneous':'#B4B2A9','Other':'#888780'};
 function setFieldChartView(view) {
   fieldChartView = view;
   ['total','stacked','hectare','trend'].forEach(v => {
@@ -3252,7 +3256,7 @@ function getFieldAgronomy(d) {
   const soilLabel = soil ? soil.charAt(0).toUpperCase() + soil.slice(1) : null;
   const fitRaw = vk && soil ? (vk.soilFit[soil] || 'fair') : null;
   const fitLabel = fitRaw === 'good' ? '✓ Good fit' : fitRaw === 'fair' ? '~ Fair fit' : '✗ Poor fit — consider variety change';
-  const fitColor = fitRaw === 'good' ? 'var(--green)' : fitRaw === 'fair' ? 'var(--amber-text,#B45309)' : 'var(--red,#E24B4A)';
+  const fitColor = fitRaw === 'good' ? 'var(--green)' : fitRaw === 'fair' ? 'var(--amber-text,#7A3D08)' : 'var(--red,#E24B4A)';
   const lines = [];
   if (vk && soilLabel) lines.push({ icon: '🌱', text: `${variety} on ${soilLabel}: <b style="color:${fitColor}">${fitLabel}</b>` });
   if (vk) lines.push({ icon: '📋', text: vk.varietyNote });
@@ -3745,14 +3749,14 @@ function initAreaMap() {
     try { areaMapInstance.fitBounds(refBounds, { padding: [40, 40] }); } catch (e) {}
   }
 
-  areaMapPolygon = L.polygon([], { color: '#1D9E75', weight: 3, fillOpacity: 0.25 }).addTo(areaMapInstance);
+  areaMapPolygon = L.polygon([], { color: '#2FC9A4', weight: 3, fillOpacity: 0.25 }).addTo(areaMapInstance);
   areaMapInstance.on('click', handleAreaMapClick);
   document.getElementById('area-mapper-result').style.display = 'none';
   document.getElementById('area-mapper-confirm-row').style.display = 'none';
 }
 function handleAreaMapClick(e) {
   areaMapPoints.push(e.latlng);
-  const marker = L.circleMarker(e.latlng, { radius: 5, color: '#fff', weight: 2, fillColor: '#1D9E75', fillOpacity: 1 }).addTo(areaMapInstance);
+  const marker = L.circleMarker(e.latlng, { radius: 5, color: '#fff', weight: 2, fillColor: '#2FC9A4', fillOpacity: 1 }).addTo(areaMapInstance);
   areaMapMarkers.push(marker);
   areaMapPolygon.setLatLngs(areaMapPoints);
 }
@@ -4140,7 +4144,7 @@ function renderMapFieldSummaryPanel(f) {
   panel.style.borderLeft = `4px solid ${phaseColor}`;
   const agro = getFieldAgronomy(d);
   const agroSection = agro ? `
-    <div style="margin-top:14px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius);border-left:3px solid var(--mint,#1D9E75);">
+    <div style="margin-top:14px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius);border-left:3px solid var(--mint,#2FC9A4);">
       <p class="section-label" style="margin:0 0 6px;font-size:11px;">Agronomy notes</p>
       ${agro.map(l=>`<div style="font-size:12px;color:var(--text2);line-height:1.7;">${l.icon} ${l.text}</div>`).join('')}
     </div>` : '';
