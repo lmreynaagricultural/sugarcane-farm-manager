@@ -53,6 +53,14 @@
   .tab { font-size: 15px; padding: 6px 12px; border-radius: var(--radius); border: 0.5px solid var(--border2); background: transparent; color: var(--text2); cursor: pointer; font-family: inherit; transition: background 0.15s; white-space: nowrap; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .tab.active { background: var(--bg); color: var(--text); border-color: var(--border2); font-weight: 500; }
   .tab:hover { background: var(--bg2); }
+  /* On narrow screens there's no room for icon + label without truncating
+     to "Over..." etc. -- drop the label and let the icon fill the button
+     instead of showing icon + ellipsis. */
+  @media (max-width: 640px) {
+    .tab-row .tab { flex: 1 1 0; display: flex; align-items: center; justify-content: center; padding: 10px 4px; }
+    .tab-row .tab .tab-label { display: none; }
+    .tab-row .tab i { margin-right: 0 !important; font-size: 22px !important; }
+  }
   .subtab { font-size: 16px; padding: 6px 14px; border-radius: var(--radius); border: 0.5px solid var(--border2); background: transparent; color: var(--text2); cursor: pointer; font-family: inherit; transition: background 0.15s; }
   .subtab.active { background: var(--bg2); color: var(--text); border-color: var(--border2); font-weight: 500; }
   .subtab:hover { background: var(--bg2); }
@@ -220,13 +228,13 @@
 
 <main>
   <div class="tab-row">
-    <button class="tab active" onclick="showTab('overview')"><i class="ti ti-layout-dashboard" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Overview</button>
-    <button class="tab" onclick="showTab('map')"><i class="ti ti-map" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Map</button>
-    <button class="tab" onclick="showTab('fields')"><i class="ti ti-layout-grid" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Fields</button>
-    <button class="tab" onclick="showTab('workers')"><i class="ti ti-users" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Workers</button>
-    <button class="tab" onclick="showTab('expenses')"><i class="ti ti-cash" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Expenses</button>
-    <button class="tab" onclick="showTab('export')"><i class="ti ti-download" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Export</button>
-    <button class="tab" onclick="showTab('settings')"><i class="ti ti-settings" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Settings</button>
+    <button class="tab active" onclick="showTab('overview')" title="Overview"><i class="ti ti-layout-dashboard" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
+    <button class="tab" onclick="showTab('map')" title="Map"><i class="ti ti-map" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Map</span></button>
+    <button class="tab" onclick="showTab('fields')" title="Fields"><i class="ti ti-layout-grid" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Fields</span></button>
+    <button class="tab" onclick="showTab('workers')" title="Workers"><i class="ti ti-users" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Workers</span></button>
+    <button class="tab" onclick="showTab('expenses')" title="Expenses"><i class="ti ti-cash" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Expenses</span></button>
+    <button class="tab" onclick="showTab('export')" title="Export"><i class="ti ti-download" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Export</span></button>
+    <button class="tab" onclick="showTab('settings')" title="Settings"><i class="ti ti-settings" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Settings</span></button>
   </div>
 
   <!-- ============ OVERVIEW (summary + calendar + weather + insights) ============ -->
