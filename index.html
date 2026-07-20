@@ -986,6 +986,39 @@
         </label>
       </div>
     </div>
+
+    <div class="panel">
+      <details id="radio-details" ontoggle="if(this.open && !radioLoadedOnce){radioLoadedOnce=true;loadRadioStations();}">
+        <summary style="cursor:pointer;font-size:15px;font-weight:500;color:var(--text);"><i class="ti ti-radio" style="font-size:18px;vertical-align:-3px;margin-right:6px;"></i>World Radio</summary>
+        <div style="margin-top:14px;">
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label">Country</label>
+            <select id="radio-country" onchange="loadRadioStations()">
+              <option value="Philippines">Philippines</option>
+              <option value="Japan">Japan</option>
+              <option value="South Korea">South Korea</option>
+              <option value="Indonesia">Indonesia</option>
+              <option value="Thailand">Thailand</option>
+              <option value="Vietnam">Vietnam</option>
+              <option value="India">India</option>
+              <option value="Australia">Australia</option>
+              <option value="United States">United States</option>
+              <option value="United Kingdom">United Kingdom</option>
+              <option value="Germany">Germany</option>
+              <option value="France">France</option>
+              <option value="Spain">Spain</option>
+              <option value="Brazil">Brazil</option>
+              <option value="Mexico">Mexico</option>
+              <option value="Nigeria">Nigeria</option>
+            </select>
+          </div>
+          <div id="radio-station-list" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
+          <div id="radio-now-playing" style="margin-top:10px;font-size:13px;color:var(--text2);"></div>
+          <audio id="radio-player" controls style="width:100%;margin-top:8px;display:none;"></audio>
+          <p class="form-error" id="radio-error"></p>
+        </div>
+      </details>
+    </div>
   </div>
 </main>
 
@@ -4236,6 +4269,52 @@ function savePreferences() {
   // Re-render overview and map recs immediately so change is visible
   if (document.getElementById('tab-overview').style.display !== 'none') renderOverview();
   if (document.getElementById('tab-map').style.display !== 'none') renderMapRecommendations();
+}
+
+/* ── World Radio (Settings tab easter egg) ───────────────────────────────
+   Public station directory via Radio Browser API (radio-browser.info) --
+   free, no key needed. Tries a couple of mirror hosts in case one is
+   unreachable. Nothing here touches farm data or the sync pipeline. */
+let radioLoadedOnce = false;
+const RADIO_API_HOSTS = ['de1.api.radio-browser.info', 'nl1.api.radio-browser.info', 'at1.api.radio-browser.info'];
+async function loadRadioStations() {
+  const country = document.getElementById('radio-country').value;
+  const list = document.getElementById('radio-station-list');
+  const err = document.getElementById('radio-error');
+  err.style.display = 'none';
+  list.innerHTML = '<p class="empty-state" style="padding:8px 0;">Loading stations…</p>';
+  for (const host of RADIO_API_HOSTS) {
+    try {
+      const res = await fetch(`https://${host}/json/stations/bycountry/${encodeURIComponent(country)}?limit=25&hidebroken=true&order=clickcount&reverse=true`);
+      if (!res.ok) throw new Error('bad response');
+      const stations = await res.json();
+      renderRadioStations(stations);
+      return;
+    } catch (e) { /* try next mirror */ }
+  }
+  list.innerHTML = '';
+  showFormError('radio-error', "Couldn't reach the radio directory — check your connection.");
+}
+function renderRadioStations(stations) {
+  const list = document.getElementById('radio-station-list');
+  if (!stations || !stations.length) { list.innerHTML = '<p class="empty-state" style="padding:8px 0;">No stations found for this country.</p>'; return; }
+  list.innerHTML = stations.map(s => {
+    const url = (s.url_resolved || s.url || '').replace(/'/g, "\\'");
+    const name = (s.name || 'Unnamed station').replace(/'/g, "\\'").replace(/</g, '&lt;');
+    const meta = [s.codec, s.bitrate ? s.bitrate + 'kbps' : ''].filter(Boolean).join(' · ');
+    return `<button class="btn" style="justify-content:flex-start;text-align:left;font-size:14px;" onclick="playRadioStation('${url}', '${name}')">
+      <i class="ti ti-play" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>${name}
+      ${meta ? `<span style="color:var(--text3);font-size:12px;margin-left:6px;">${meta}</span>` : ''}
+    </button>`;
+  }).join('');
+}
+function playRadioStation(url, name) {
+  if (!url) return;
+  const player = document.getElementById('radio-player');
+  player.src = url;
+  player.style.display = '';
+  player.play().catch(() => {});
+  document.getElementById('radio-now-playing').textContent = '📻 ' + name;
 }
 function convertAreaUnitDisplay() {
   const newUnit = document.getElementById('s-area-unit').value;
