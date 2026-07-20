@@ -4333,10 +4333,15 @@ async function loadRadioStations() {
   list.innerHTML = '<p class="empty-state" style="padding:8px 0;">Loading stations…</p>';
   for (const host of RADIO_API_HOSTS) {
     try {
-      const res = await fetch(`https://${host}/json/stations/bycountry/${encodeURIComponent(country)}?limit=25&hidebroken=true&order=clickcount&reverse=true`);
+      const res = await fetch(`https://${host}/json/stations/bycountry/${encodeURIComponent(country)}?limit=40&hidebroken=true&order=clickcount&reverse=true`);
       if (!res.ok) throw new Error('bad response');
       const stations = await res.json();
-      renderRadioStations(stations);
+      // Many station streams are plain HTTP even though the directory API
+      // itself is HTTPS -- an HTTP <audio> src on this HTTPS page trips
+      // the browser's "connection is not fully secure" mixed-content
+      // warning. Only offer streams we can actually load securely.
+      const secureStations = stations.filter(s => (s.url_resolved || s.url || '').startsWith('https://'));
+      renderRadioStations(secureStations);
       return;
     } catch (e) { /* try next mirror */ }
   }
