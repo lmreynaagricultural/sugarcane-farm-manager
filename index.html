@@ -1820,6 +1820,94 @@ const STAGES = [
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 const PHASE_BADGE = {prep:'badge-none', planting:'badge-blue', growing:'badge-good', harvest:'badge-warn'};
 const PHASE_COLOR = {prep:'#888780', planting:'#378ADD', growing:'#2FC9A4', harvest:'#C85A0A'};
+
+/* ── Crop advisory (agronomic decision support) ──────────────────────────
+   Stage (farmer-reported) is ground truth -- it already reflects real
+   conditions like drought or late rainfall that a textbook DAP model
+   can't know about. This never overrides the farmer's own entries; it
+   only suggests, using the same fields already shown on the field card
+   (stage, stageDate, moisture, irrigationMethod, lastIrrigated, fert,
+   fertMix) plus real rainfall from the app's own weather cache.
+   Sources: FAO Land & Water; LSU AgCenter; EOS Crop Monitoring. */
+const STAGE_TARGETS = {
+  germination:        { displayName:'Germination',              typicalDays:14, irrigationIntervalDays:7,  irrigationDepthMm:35, nitrogenKgHa:null, potassiumKgHa:null },
+  weeding_1:           { displayName:'1st weeding',              typicalDays:7,  irrigationIntervalDays:10, irrigationDepthMm:45, nitrogenKgHa:null, potassiumKgHa:null },
+  fertilizing_1:       { displayName:'1st fertilizing',          typicalDays:3,  irrigationIntervalDays:10, irrigationDepthMm:45, nitrogenKgHa:60,   potassiumKgHa:20 },
+  growing:             { displayName:'Growing',                  typicalDays:60, irrigationIntervalDays:8,  irrigationDepthMm:55, nitrogenKgHa:40,   potassiumKgHa:50 },
+  weeding_2:           { displayName:'2nd weeding',              typicalDays:7,  irrigationIntervalDays:8,  irrigationDepthMm:55, nitrogenKgHa:null, potassiumKgHa:null },
+  fertilizing_final:   { displayName:'Final fertilizing',        typicalDays:3,  irrigationIntervalDays:12, irrigationDepthMm:40, nitrogenKgHa:null, potassiumKgHa:40 },
+  ready_harvest:       { displayName:'Ready for harvest',        typicalDays:0,  irrigationIntervalDays:null, irrigationDepthMm:null, nitrogenKgHa:null, potassiumKgHa:null },
+};
+
+/* Extracts an N-P-K grade like "21-0-0" out of a free-text fertilizer mix
+   field (e.g. "21-0-0 (2 doses)"). Returns null if it doesn't match the
+   standard grade notation -- never guess nutrient content from prose. */
+function parseFertMixNPK(fertMix) {
+  if (!fertMix) return null;
+  const m = String(fertMix).match(/(\d+)\s*-\s*(\d+)\s*-\s*(\d+)/);
+  return m ? { n: +m[1], p: +m[2], k: +m[3] } : null;
+}
+
+/* Sums real recorded/forecast rainfall (mm) between an ISO date and today,
+   using the same weather cache the calendar's rain tracking already uses. */
+function recentRainfallMm(sinceISO) {
+  if (!sinceISO) return 0;
+  const map = rainMapFromWeather();
+  const today = todayISO();
+  let total = 0, d = sinceISO;
+  while (d <= today) { total += map[d] || 0; d = addDaysISO(d, 1); }
+  return total;
+}
+
+/* Returns one advisory suggestion for a field, or null if there's nothing
+   worth flagging. Pure function -- never modifies field data or localStorage.
+   options.knownIrregular: pass true during a known drought/flood/etc. to
+   soften time-based phrasing into a question instead of an alert. */
+function suggestNextAction(field, options = {}) {
+  if (!field || !field.stage) return null;
+  const target = STAGE_TARGETS[field.stage];
+  if (!target) return null;
+  const today = todayISO();
+  const daysInStage = field.stageDate ? daysBetween(field.stageDate, today) : null;
+
+  // 1. Irrigation -- moisture (direct observation) beats calculated interval.
+  const activelyIrrigated = field.irrigationMethod && field.irrigationMethod !== 'rainfed' && field.irrigationMethod !== 'none';
+  if (target.irrigationIntervalDays !== null && activelyIrrigated && field.moisture !== 'wet') {
+    if (field.moisture === 'dry') {
+      return { priority: 'high', icon: '💧', message: `Soil reported dry. "${target.displayName}" stage suggests ~${target.irrigationDepthMm}mm irrigation.` };
+    }
+    const daysSinceIrrigation = field.lastIrrigated ? daysBetween(field.lastIrrigated, today) : null;
+    if (daysSinceIrrigation !== null && daysSinceIrrigation > target.irrigationIntervalDays + 2) {
+      const rainfall = recentRainfallMm(field.lastIrrigated);
+      if (rainfall < 15) {
+        const phrase = options.knownIrregular ? 'Water availability ok?' : 'Consider irrigating soon.';
+        return { priority: options.knownIrregular ? 'medium' : 'high', icon: '💧', message: `Last irrigated ${daysSinceIrrigation} days ago (stage target: every ${target.irrigationIntervalDays} days); only ${rainfall.toFixed(0)}mm rain recorded since. ${phrase}` };
+      }
+    }
+  }
+
+  // 2. Fertilizer -- fert (applied yes/no) + fertMix (actual N-P-K grade) together.
+  if (target.nitrogenKgHa || target.potassiumKgHa) {
+    const applied = field.fert === 'yes';
+    const npk = parseFertMixNPK(field.fertMix);
+    const zeroN = npk && npk.n === 0;
+    const zeroK = npk && npk.k === 0;
+    if (target.nitrogenKgHa && (!applied || zeroN)) {
+      return { priority: 'medium', icon: '🌱', message: `"${target.displayName}" stage suggests ~${target.nitrogenKgHa} kg/ha N.${applied ? ` Logged mix (${field.fertMix}) shows 0% N.` : ''}` };
+    }
+    if (target.potassiumKgHa > 30 && (!applied || zeroK)) {
+      return { priority: 'medium', icon: '🌱', message: `"${target.displayName}" stage suggests increasing K to ~${target.potassiumKgHa} kg/ha.${applied ? ` Logged mix (${field.fertMix}) shows 0% K.` : ''}` };
+    }
+  }
+
+  // 3. Time-in-stage -- a soft question, never an assertion.
+  if (daysInStage !== null && target.typicalDays && daysInStage > target.typicalDays * 1.5) {
+    const q = options.knownIrregular ? 'expected given recent conditions?' : 'worth a look?';
+    return { priority: 'info', icon: '📊', message: `${daysInStage} days in "${target.displayName}" (typical ~${target.typicalDays}) — ${q}` };
+  }
+
+  return null;
+}
 /* Crop height in real feet ranges rather than vague Short/Normal/Tall labels. */
 const HEIGHT_OPTIONS = [
   {value:'lt1', label:'Under 1 ft'},
@@ -2363,6 +2451,9 @@ function renderFieldGrid() {
     const workersToday = workers.filter(w => w.field===f && w.date===today).length;
     const fieldExpenseTotal = expenses.filter(e => e.field===f).reduce((s,e)=>s+parseFloat(e.amount||0),0);
     const fEsc = f.replace(/'/g,"\\'");
+    const advisory = suggestNextAction(d, {});
+    const advisoryColor = advisory ? ({high:'var(--red)', medium:'var(--amber)', info:'var(--blue)'}[advisory.priority]) : '';
+    const advisoryHTML = advisory ? `<div class="field-note-preview" style="border-left:3px solid ${advisoryColor};white-space:normal;">${advisory.icon} ${advisory.message}</div>` : '';
     return `<div class="${cls}" data-field-card="${f.replace(/"/g,'&quot;')}" ondblclick="selectFieldToEdit('${fEsc}')" title="Double-click to edit">
       <div class="field-header">
         <span class="field-name">${f}</span>
@@ -2374,6 +2465,7 @@ function renderFieldGrid() {
       <div class="field-row"><span>Area</span><span>${area}</span></div>
       <div class="field-row"><span>Workers today</span><span>${workersToday}</span></div>
       ${fieldCardRows(d)}
+      ${advisoryHTML}
       ${notePreview}
       <div class="field-row" style="margin-top:4px;padding-top:8px;border-top:0.5px solid var(--border);"><span>Total expenses</span><span>${peso(fieldExpenseTotal)}</span></div>
       <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${col};"></div></div>
