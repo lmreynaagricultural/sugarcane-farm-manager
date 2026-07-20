@@ -55,16 +55,6 @@ exports.handler = async (event) => {
   }
   const p = payload || {};
 
-  /* ── TEMPORARY DIAGNOSTICS — remove once auth/schema issues are confirmed
-     fixed. Visible in Netlify: Site → Functions → log → Logs. ── */
-  console.log('[log.js] env check', {
-    SUPABASE_URL: SUPABASE_URL || null,
-    hasServiceKey: !!SUPABASE_SERVICE_KEY,
-    type,
-    payloadKeys: Object.keys(p),
-  });
-  /* ── end diagnostics ── */
-
   const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -73,24 +63,10 @@ exports.handler = async (event) => {
   let userId = null;
   const authHeader = event.headers.authorization || event.headers.Authorization;
 
-  /* ── TEMPORARY DIAGNOSTICS ── */
-  console.log('[log.js] auth header check', {
-    headerPresent: !!authHeader,
-    headerPrefix: authHeader ? authHeader.slice(0, 20) + '…' : null,
-  });
-  /* ── end diagnostics ── */
-
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice('Bearer '.length).trim();
     if (token) {
-      const { data: userResult, error: userError } = await supabaseAdmin.auth.getUser(token);
-
-      /* ── TEMPORARY DIAGNOSTICS ── */
-      console.log('[log.js] getUser() result', {
-        hasUser: !!userResult?.user,
-        userErrorFull: userError ? JSON.stringify(userError, Object.getOwnPropertyNames(userError)) : null,
-      });
-      /* ── end diagnostics ── */
+      const { data: userResult } = await supabaseAdmin.auth.getUser(token);
 
       if (userResult?.user) {
         userId = userResult.user.id;

@@ -1410,23 +1410,8 @@ async function apiCall(path, method, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const { data: { session }, error: sessionError } = await sb.auth.getSession();
+  const { data: { session } } = await sb.auth.getSession();
   let token = session ? session.access_token : null;
-
-  /* ── TEMPORARY DEBUG LOGGING — remove once auth is confirmed working ──
-     Never logs the full JWT (just enough to tell tokens apart), so this
-     is safe to leave in briefly, but strip it out before final launch. */
-  console.log(`[apiCall:${path}]`, {
-    hasSession: !!session,
-    sessionError: sessionError ? sessionError.message : null,
-    userId: session ? session.user.id : null,
-    tokenPresent: !!token,
-    tokenPrefix: token ? token.slice(0, 16) + '…' : null,
-    tokenExpiresAt: session ? new Date(session.expires_at * 1000).toISOString() : null,
-    tokenExpired: session ? (session.expires_at * 1000 < Date.now()) : null,
-    method: method || 'GET',
-  });
-  /* ── end temporary debug logging ──────────────────────────────────── */
 
   let res = await doFetch(token);
 

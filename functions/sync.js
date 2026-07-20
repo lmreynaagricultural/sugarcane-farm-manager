@@ -32,17 +32,6 @@ exports.handler = async (event) => {
     return { statusCode: 204, headers: CORS_HEADERS, body: '' };
   }
 
-  /* ── TEMPORARY DIAGNOSTICS — remove once auth is confirmed working ──
-     Visible in Netlify: Site → Functions → sync → Logs (server-side,
-     NOT the browser console). Never logs the actual service key. */
-  console.log('[sync.js] env check', {
-    SUPABASE_URL: SUPABASE_URL || null,
-    hasServiceKey: !!SUPABASE_SERVICE_KEY,
-    serviceKeyLength: SUPABASE_SERVICE_KEY ? SUPABASE_SERVICE_KEY.length : 0,
-    httpMethod: event.httpMethod,
-  });
-  /* ── end diagnostics ─────────────────────────────────────────────── */
-
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     console.error('sync.js: missing SUPABASE_URL or SUPABASE_SERVICE_KEY env vars');
     return jsonResponse(500, { error: 'Server misconfigured: missing Supabase environment variables' });
@@ -50,14 +39,6 @@ exports.handler = async (event) => {
 
   // Extract and validate the bearer token
   const authHeader = event.headers.authorization || event.headers.Authorization;
-
-  /* ── TEMPORARY DIAGNOSTICS ── */
-  console.log('[sync.js] auth header check', {
-    headerPresent: !!authHeader,
-    headerPrefix: authHeader ? authHeader.slice(0, 20) + '…' : null,
-    startsWithBearer: authHeader ? authHeader.startsWith('Bearer ') : null,
-  });
-  /* ── end diagnostics ── */
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return jsonResponse(401, { error: 'Missing or malformed Authorization header' });
@@ -77,14 +58,6 @@ exports.handler = async (event) => {
   // without leaking it to the client — "invalid JWT" vs "expired" vs an
   // audience/issuer mismatch look identical from the browser otherwise.
   const { data: userResult, error: userError } = await supabaseAdmin.auth.getUser(token);
-
-  /* ── TEMPORARY DIAGNOSTICS — full getUser() result ── */
-  console.log('[sync.js] getUser() result', {
-    hasUser: !!userResult?.user,
-    userId: userResult?.user?.id || null,
-    userErrorFull: userError ? JSON.stringify(userError, Object.getOwnPropertyNames(userError)) : null,
-  });
-  /* ── end diagnostics ── */
 
   if (userError || !userResult?.user) {
     console.error('sync.js: token verification failed', {
