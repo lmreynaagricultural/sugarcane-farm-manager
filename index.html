@@ -2100,6 +2100,42 @@ function showTab(t) {
   if (t==='settings') renderSettingsTab();
 }
 
+/* ── Swipe left/right between tabs (mobile) ──────────────────────────────
+   Scoped to touches that start outside anything that has its own
+   horizontal drag/scroll behavior (the Leaflet maps, wide tables, modals)
+   so this doesn't hijack map panning or table scrolling. Requires a clear
+   horizontal swipe (enough distance, and horizontal >> vertical movement)
+   so normal vertical page scrolling is never mistaken for a tab change. */
+(function initTabSwipe() {
+  const mainEl = document.querySelector('main');
+  if (!mainEl) return;
+  const SWIPE_IGNORE_SELECTOR = '.leaflet-container, .table-wrap, .chart-wrap, #consent-modal, #account-modal, input, select, textarea';
+  let startX = 0, startY = 0, tracking = false, ignore = false;
+
+  mainEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { tracking = false; return; }
+    ignore = !!e.target.closest(SWIPE_IGNORE_SELECTOR);
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+
+  mainEl.addEventListener('touchend', (e) => {
+    if (!tracking || ignore) { tracking = false; return; }
+    tracking = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const tabButtons = Array.from(document.querySelectorAll('.tab-row .tab'));
+    const activeBtn = document.querySelector('.tab-row .tab.active');
+    const currentIndex = activeBtn ? tabButtons.indexOf(activeBtn) : -1;
+    if (currentIndex === -1) return;
+    if (dx < 0 && currentIndex < TABS.length - 1) showTab(TABS[currentIndex + 1]);
+    else if (dx > 0 && currentIndex > 0) showTab(TABS[currentIndex - 1]);
+  }, { passive: true });
+})();
+
 /* ---------------- Searchable variety dropdown -------------------------------- */
 const VARIETY_LIST = [
   'VMC 84-524','VMC 84-947','VMC 86-550','VMC 88-354','VMC 71-39',
