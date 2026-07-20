@@ -1,0 +1,12 @@
+{
+  "name": "sugarcane-farm-manager",
+  "version": "1.0.0",
+  "description": "Sugarcane Farm Manager - Netlify Functions for Supabase cloud sync",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
