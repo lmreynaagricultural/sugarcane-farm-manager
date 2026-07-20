@@ -104,8 +104,8 @@ exports.handler = async (event) => {
         const { message, stack, app_version, user_agent, url } = p;
         const { error } = await supabaseAdmin.from('error_logs').insert({
           user_id: userId,
-          message: message || 'Unknown error',
-          stack: stack || null,
+          error_message: message || 'Unknown error',
+          error_stack: stack || null,
           app_version: app_version || null,
           user_agent: user_agent || null,
           url: url || null,
@@ -125,7 +125,7 @@ exports.handler = async (event) => {
         }
         const { error } = await supabaseAdmin.from('events').insert({
           user_id: userId,
-          name: event_name,
+          event_name: event_name,
           properties: properties || {},
           app_version: app_version || null,
           created_at: new Date().toISOString(),
