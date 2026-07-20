@@ -2350,6 +2350,15 @@ function cycleReferenceDate(d) {
   if (d && d.plant) return { date: d.plant, label: 'Days since planting' };
   return null;
 }
+/* The farmer's own moisture reading is the default -- but if today's
+   recorded rainfall exceeds 10mm, that's a strong enough physical signal
+   to show as adequate regardless of a stale prior reading. */
+function moistureDisplay(d) {
+  const manualLabel = d && d.moisture ? ({dry:'Dry',ok:'Adequate',wet:'Waterlogged'}[d.moisture]) : null;
+  const todayRainMm = rainMapFromWeather()[todayISO()] || 0;
+  if (todayRainMm > 10) return `Adequate (${Math.round(todayRainMm)}mm rain today)`;
+  return manualLabel || '—';
+}
 function fieldCardRows(d) {
   const stageKey = (d && d.stage) || 'resting_post_harvest';
   const info = stageInfo(stageKey);
@@ -2383,7 +2392,7 @@ function fieldCardRows(d) {
     const ref = cycleReferenceDate(d);
     const win = ref ? estHarvestWindow(ref.date) : null;
     if (win) rows += `<div class="field-row"><span>Harvest by</span><span>${monthYear(win.to)}</span></div>`;
-    rows += `<div class="field-row"><span>Moisture</span><span>${d&&d.moisture?({dry:'Dry',ok:'Adequate',wet:'Waterlogged'}[d.moisture]):'—'}</span></div>`;
+    rows += `<div class="field-row"><span>Moisture</span><span>${moistureDisplay(d)}</span></div>`;
     rows += `<div class="field-row"><span>Irrigated</span><span>${(d&&d.irrigationCount)||0}${d&&d.lastIrrigated?' · '+weekOfShort(d.lastIrrigated):''}</span></div>`;
     rows += `<div class="field-row"><span>Pest</span><span>${d&&d.pest?({none:'None',mild:'Mild',severe:'Severe'}[d.pest]):'—'}</span></div>`;
     rows += `<div class="field-row"><span>Height</span><span>${d&&d.height?HEIGHT_LABELS[d.height]:'—'}</span></div>`;
@@ -2402,7 +2411,7 @@ function fieldCardRows(d) {
       const ref = cycleReferenceDate(d);
       const win = ref ? estHarvestWindow(ref.date) : null;
       if (win) rows += `<div class="field-row"><span>Harvest by</span><span>${monthYear(win.to)}</span></div>`;
-      rows += `<div class="field-row"><span>Moisture</span><span>${d&&d.moisture?({dry:'Dry',ok:'Adequate',wet:'Waterlogged'}[d.moisture]):'—'}</span></div>`;
+      rows += `<div class="field-row"><span>Moisture</span><span>${moistureDisplay(d)}</span></div>`;
       rows += `<div class="field-row"><span>Pest</span><span>${d&&d.pest?({none:'None',mild:'Mild',severe:'Severe'}[d.pest]):'—'}</span></div>`;
       rows += `<div class="field-row"><span>Leaf color</span><span>${d&&d.leafcolor?({green:'Green',light_green:'Light green',slight_yellow:'Slight yellow',yellow:'Yellow'}[d.leafcolor]):'—'}</span></div>`;
       rows += `<div class="field-row"><span>Fertilizer</span><span>${d&&d.fertMix?d.fertMix:(d&&d.fert==='yes'?'Applied':'Not yet')}</span></div>`;
