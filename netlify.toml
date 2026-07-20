@@ -1,0 +1,8 @@
+[build]
+  functions = "functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[functions."*"]
+  external_node_modules = ["@supabase/supabase-js"]
