@@ -197,6 +197,10 @@
   </div>
   <div style="display:flex;align-items:center;gap:10px;">
     <div class="header-meta" id="last-saved">No data saved yet</div>
+    <button id="hdr-install-btn" onclick="installApp()" title="Install app" style="display:none;background:var(--green);border:1px solid var(--green);border-radius:var(--radius);padding:5px 10px;font-size:13px;color:#fff;cursor:pointer;white-space:nowrap;align-items:center;gap:5px;">
+      <i class="ti ti-download" style="font-size:16px;" aria-hidden="true"></i>
+      <span>Install app</span>
+    </button>
     <button id="hdr-sync-btn" onclick="syncToCloud()" title="Sync now" style="display:none;background:none;border:1px solid var(--border2);border-radius:var(--radius);padding:5px 8px;color:var(--text2);cursor:pointer;align-items:center;">
       <i class="ti ti-refresh" style="font-size:16px;" aria-hidden="true"></i>
     </button>
@@ -1588,6 +1592,50 @@ async function logError(err) {
 
 window.addEventListener('error', e => logError(e.error || { message: e.message }));
 window.addEventListener('unhandledrejection', e => logError(e.reason || { message: 'Unhandled rejection' }));
+
+/* ── Install to home screen ───────────────────────────────────────────── */
+let deferredInstallPrompt = null;
+function isRunningStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (!isRunningStandalone()) {
+    const btn = document.getElementById('hdr-install-btn');
+    if (btn) btn.style.display = 'flex';
+  }
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  const btn = document.getElementById('hdr-install-btn');
+  if (btn) btn.style.display = 'none';
+  trackEvent('app_installed', {});
+});
+async function installApp() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    const btn = document.getElementById('hdr-install-btn');
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+  if (isIOS()) {
+    alert('To install: tap the Share button below, then "Add to Home Screen".');
+  }
+}
+/* iOS Safari never fires beforeinstallprompt -- show the button anyway
+   (if not already installed) since tapping it just shows instructions. */
+if (isIOS() && !isRunningStandalone()) {
+  window.addEventListener('load', () => {
+    const btn = document.getElementById('hdr-install-btn');
+    if (btn) btn.style.display = 'flex';
+  });
+}
 
 /* ── Event tracking ──────────────────────────────────────────────────── */
 async function trackEvent(name, props) {
