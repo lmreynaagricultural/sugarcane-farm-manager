@@ -219,6 +219,7 @@
     <button id="hdr-sync-btn" onclick="syncToCloud()" title="Sync now" style="display:none;background:none;border:1px solid var(--border2);border-radius:var(--radius);padding:5px 8px;color:var(--text2);cursor:pointer;align-items:center;">
       <i class="ti ti-refresh" style="font-size:16px;" aria-hidden="true"></i>
     </button>
+    <button id="hdr-help-btn" onclick="openOnboardingGuide()" title="Help & getting started" aria-label="Help and getting started" style="background:none;border:1.5px solid var(--amber);color:var(--amber);border-radius:50%;width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;font-weight:500;flex-shrink:0;">?</button>
     <button id="hdr-account-btn" onclick="openAccountPanel()" style="background:none;border:1px solid var(--border2);border-radius:var(--radius);padding:5px 10px;font-size:13px;color:var(--text2);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;">
       <i class="ti ti-user-circle" style="font-size:16px;" aria-hidden="true"></i>
       <span id="hdr-account-label">Sign in</span>
@@ -1099,6 +1100,22 @@
   </div>
 </div>
 
+<!-- ── Onboarding Walkthrough Modal ─────────────────────────────────────────
+     Shown automatically on a genuinely first-ever visit (before the
+     consent/sign-in prompt); reachable anytime after via the "?" button
+     in the header. ──────────────────────────────────────────────────── -->
+<div id="onboarding-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9500;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--bg);border-radius:var(--radius-lg);padding:30px 26px 26px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.28);position:relative;">
+    <button onclick="closeOnboardingModal()" aria-label="Close" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;position:absolute;top:8px;right:8px;line-height:1;padding:10px;">&times;</button>
+    <div id="onboarding-slide-content" style="min-height:200px;"></div>
+    <div id="onboarding-dots" style="display:flex;justify-content:center;gap:6px;margin:18px 0;"></div>
+    <div class="btn-row" style="justify-content:space-between;margin-top:0;">
+      <button class="btn" id="onboarding-back-btn" onclick="onboardingPrev()">Back</button>
+      <button class="btn btn-primary" id="onboarding-next-btn" onclick="onboardingNext()">Next</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Account Panel Modal ───────────────────────────────────────────────── -->
 <div id="account-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--bg);border-radius:var(--radius-lg);padding:28px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.22);position:relative;">
@@ -1406,6 +1423,12 @@ let _consentShown = false;
 function maybeShowConsentModal() {
   if (_consentShown || currentUser || !getSupabase()) return;
   if (localStorage.getItem('sc_dismissed_consent') === '1') return;
+  // Wait for the onboarding walkthrough to finish first on a genuinely new
+  // visit -- maybeShowOnboarding() always ends up setting this flag (either
+  // by completing the walkthrough, or immediately for detected existing
+  // users), so this only ever blocks for the brief window onboarding is
+  // actually open.
+  if (!localStorage.getItem('sc_onboarding_seen')) return;
   _consentShown = true;
   document.getElementById('consent-modal').style.display = 'flex';
 }
@@ -1413,6 +1436,64 @@ function maybeShowConsentModal() {
 function closeConsentModal() {
   document.getElementById('consent-modal').style.display = 'none';
   localStorage.setItem('sc_dismissed_consent','1');
+}
+
+/* ── Onboarding walkthrough ────────────────────────────────────────────
+   Shown automatically on a genuinely first-ever visit, before the
+   consent/sign-in prompt; reachable anytime after via the "?" header
+   button. Existing users (already have data, already signed in, or
+   already dismissed the sign-in prompt before this feature existed)
+   are detected and skipped automatically rather than interrupted. */
+const ONBOARDING_SLIDES = [
+  { icon: '🌱', title: 'Welcome to Sugarcane Farm Manager', body: 'Track your fields, growth stages, workers, and expenses — all in one place, even with zero signal.' },
+  { icon: '📍', title: 'Add your fields', body: 'Add each field, then trace its real shape on the satellite map on the Map tab for an exact area instead of guessing.' },
+  { icon: '🔄', title: 'Update growth stages', body: 'Change one field’s stage at a time, or use "Set all fields’ stage…" on the Fields tab to move the whole farm at once.' },
+  { icon: '💧', title: 'Moisture that thinks for itself', body: 'Your moisture reading updates itself using real rainfall — a dry spell or a downpour shows up automatically, even if you forget to log it.' },
+  { icon: '💾', title: 'You’re ready', body: 'Sign in anytime for free cloud backup, or export a full backup whenever you like. Let’s get your farm set up.' },
+];
+let onboardingIndex = 0;
+let _onboardingShown = false;
+function renderOnboardingSlide() {
+  const s = ONBOARDING_SLIDES[onboardingIndex];
+  document.getElementById('onboarding-slide-content').innerHTML = `
+    <div style="font-size:40px;text-align:center;margin-bottom:14px;">${s.icon}</div>
+    <h3 style="font-size:19px;font-weight:500;color:var(--text);text-align:center;margin-bottom:10px;">${s.title}</h3>
+    <p style="font-size:15px;color:var(--text2);text-align:center;line-height:1.6;">${s.body}</p>
+  `;
+  document.getElementById('onboarding-dots').innerHTML = ONBOARDING_SLIDES.map((_, i) =>
+    `<span style="width:7px;height:7px;border-radius:50%;background:${i === onboardingIndex ? 'var(--amber)' : 'var(--border2)'};"></span>`
+  ).join('');
+  document.getElementById('onboarding-back-btn').style.visibility = onboardingIndex === 0 ? 'hidden' : 'visible';
+  document.getElementById('onboarding-next-btn').textContent = onboardingIndex === ONBOARDING_SLIDES.length - 1 ? 'Get started' : 'Next';
+}
+function onboardingNext() {
+  if (onboardingIndex < ONBOARDING_SLIDES.length - 1) { onboardingIndex++; renderOnboardingSlide(); }
+  else closeOnboardingModal();
+}
+function onboardingPrev() {
+  if (onboardingIndex > 0) { onboardingIndex--; renderOnboardingSlide(); }
+}
+function openOnboardingModal() {
+  onboardingIndex = 0;
+  renderOnboardingSlide();
+  document.getElementById('onboarding-modal').style.display = 'flex';
+}
+function openOnboardingGuide() {
+  window.open('onboarding.html', '_blank');
+}
+function closeOnboardingModal() {
+  document.getElementById('onboarding-modal').style.display = 'none';
+  localStorage.setItem('sc_onboarding_seen', '1');
+  maybeShowConsentModal();
+}
+function maybeShowOnboarding() {
+  if (_onboardingShown) return false;
+  if (localStorage.getItem('sc_onboarding_seen') === '1') return false;
+  const hasExistingData = (typeof data !== 'undefined' && Object.keys(data || {}).length > 0) || currentUser || localStorage.getItem('sc_dismissed_consent') === '1';
+  if (hasExistingData) { localStorage.setItem('sc_onboarding_seen', '1'); return false; }
+  _onboardingShown = true;
+  openOnboardingModal();
+  return true;
 }
 
 function openAccountPanel() {
@@ -4654,8 +4735,13 @@ window.addEventListener('load', () => {
   initAuth();
   renderCloudStatus();
   updateAccountHeader();
-  // Show the consent/sign-in prompt after a short delay so the app renders first
-  setTimeout(() => maybeShowConsentModal(), 2500);
+  // On a genuinely first-ever visit, show the onboarding walkthrough first;
+  // it chains into the consent/sign-in prompt once closed. Returning users
+  // (onboarding already marked seen) just get the normal delayed prompt.
+  if (!maybeShowOnboarding()) {
+    // Show the consent/sign-in prompt after a short delay so the app renders first
+    setTimeout(() => maybeShowConsentModal(), 2500);
+  }
   // Track tab-switches for feature usage analytics
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => {

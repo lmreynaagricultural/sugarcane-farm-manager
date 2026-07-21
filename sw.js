@@ -1,8 +1,8 @@
 /* Service worker for Sugarcane Farm Manager.
    Caches the app shell so it opens instantly and works offline after the first visit.
    Bump CACHE_NAME whenever index.html changes so old caches get cleared out. */
-const CACHE_NAME = 'sugarcane-farm-v18';
-const APP_SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE_NAME = 'sugarcane-farm-v19';
+const APP_SHELL = ['./', './index.html', './onboarding.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
