@@ -4726,8 +4726,39 @@ renderOverview();
    directly (file://) can't use service workers, so this quietly no-ops there. */
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // Check for a new version whenever the tab regains focus, and every
+      // hour while it stays open — installed PWAs can sit open for days.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+    }).catch(() => {});
+
+    // The new worker calls skipWaiting()/clients.claim() as soon as it
+    // installs, so 'controllerchange' fires the moment it takes over.
+    // The very first activation on a brand-new install also fires this
+    // event (no controller -> a controller) — that's not an update, so
+    // only show the banner once this tab has already had a controller.
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) showUpdateBanner();
+      hadController = true;
+    });
   });
+}
+
+function showUpdateBanner() {
+  if (document.getElementById('sc-update-banner')) return;
+  const el = document.createElement('div');
+  el.id = 'sc-update-banner';
+  el.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;background:var(--bg);color:var(--text);border:1px solid var(--border2);border-radius:999px;padding:9px 9px 9px 16px;box-shadow:0 4px 18px rgba(0,0,0,0.18);display:flex;align-items:center;gap:10px;font-size:14px;max-width:calc(100vw - 32px);';
+  el.innerHTML = '<span>A new version is ready</span>' +
+    '<button id="sc-update-refresh" style="background:var(--green);color:#fff;border:none;border-radius:999px;padding:6px 13px;font-size:13.5px;font-weight:500;cursor:pointer;white-space:nowrap;">Refresh</button>' +
+    '<button id="sc-update-dismiss" aria-label="Dismiss" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:17px;line-height:1;padding:2px 4px;">&times;</button>';
+  document.body.appendChild(el);
+  document.getElementById('sc-update-refresh').onclick = () => window.location.reload();
+  document.getElementById('sc-update-dismiss').onclick = () => el.remove();
 }
 
 /* ── Auth init — runs after everything else is rendered ─────────────── */
