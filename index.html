@@ -681,10 +681,17 @@
 
   <!-- ============ PESTS ============ -->
   <div id="tab-pests" style="display:none;">
-    <div class="panel" id="pest-checklist-panel">
-      <div class="panel-title">Identify a pest</div>
-      <p style="font-size:15px;color:var(--text2);margin-bottom:14px;">Answer a couple of questions about what you're seeing to narrow it down. This works offline — no camera or internet needed.</p>
-      <div id="pest-checklist-content"></div>
+    <div class="panel">
+      <div class="panel-title">Scan a pest with your camera</div>
+      <p style="font-size:15px;color:var(--text2);margin-bottom:12px;">Take a photo anytime, even with no signal in the field — it's saved on your phone and analyzed automatically the next time you're on Wi-Fi.</p>
+      <input type="file" accept="image/*" capture="environment" id="pest-photo-input" style="display:none;" onchange="handlePestPhotoSelected(event)">
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="document.getElementById('pest-photo-input').click()"><i class="ti ti-camera" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Scan a pest</button>
+        <button class="btn" id="pest-scan-analyze-btn" onclick="tryAnalyzePendingPhotos(true)" style="display:none;">Analyze now</button>
+      </div>
+      <p id="pest-scan-status" style="font-size:13px;color:var(--text2);margin-top:10px;"></p>
+      <div id="pest-scan-history" style="margin-top:6px;"></div>
+      <button class="btn" style="margin-top:14px;width:100%;" onclick="document.getElementById('pest-checklist-panel').scrollIntoView({behavior:'smooth',block:'start'});">No camera handy? Identify a pest by answering questions instead</button>
     </div>
     <div class="panel">
       <div class="panel-title">Pests affecting sugarcane in the Philippines</div>
@@ -692,6 +699,31 @@
       <div id="pest-database-list"></div>
     </div>
     <div class="panel" id="pest-detail-panel" style="display:none;"></div>
+    <div class="panel" id="pest-declare-panel">
+      <div class="panel-title">Declare a pest</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Manually record a pest you've confirmed. This updates the affected field's card and shows on the "Show pest spread" map layer.</p>
+      <div class="form-group">
+        <label class="form-label">Pest</label>
+        <select id="declare-pest-select"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Field</label>
+        <select id="declare-pest-field"></select>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text2);margin:10px 0;">
+        <input type="checkbox" id="declare-pest-use-pin" style="width:auto;" onchange="toggleDeclarePestPinMap()">
+        Drop a pin instead of picking a field
+      </label>
+      <div id="declare-pest-map" style="height:220px;border-radius:var(--radius);overflow:hidden;display:none;margin-bottom:12px;"></div>
+      <button class="btn btn-primary" onclick="declarePest()"><i class="ti ti-map-pin" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Declare pest</button>
+      <p class="save-msg" id="declare-pest-msg" style="display:none;"><i class="ti ti-check" style="vertical-align:-2px;" aria-hidden="true"></i> Declared!</p>
+      <div id="declare-pest-history" style="margin-top:14px;"></div>
+    </div>
+    <div class="panel" id="pest-checklist-panel">
+      <div class="panel-title">Identify a pest</div>
+      <p style="font-size:15px;color:var(--text2);margin-bottom:14px;">Answer a couple of questions about what you're seeing to narrow it down. This works offline — no camera or internet needed.</p>
+      <div id="pest-checklist-content"></div>
+    </div>
   </div>
 
   <!-- ============ EXPENSES ============ -->
@@ -2033,6 +2065,9 @@ let pestChecklistNode = 'start';
 function renderPestsTab() {
   renderPestChecklist();
   renderPestDatabaseList();
+  renderPestScanStatus();
+  populateDeclarePestSelects();
+  renderPestDeclareHistory();
   document.getElementById('pest-detail-panel').style.display = 'none';
 }
 function renderPestChecklist() {
@@ -2091,6 +2126,257 @@ function showPestDetail(pestId) {
     <p class="section-label">What to do</p>
     <p style="font-size:15px;">${p.management}</p>
   `;
+}
+
+/* ── Pest photo scan: capture offline, analyze when connected ────────────
+   Photos are stored as resized JPEG blobs in IndexedDB (not localStorage —
+   binary image data needs real storage, not a string-based store with a
+   ~5MB quota). Nothing here rides along on the existing cloud data sync;
+   scan history is local to this device only. Analysis needs Wi-Fi by
+   default (data cost matters more than a slightly slower turnaround) —
+   except on iOS Safari, which has no way to tell Wi-Fi from cellular at
+   all (no Network Information API support), so it falls back to "any
+   connection" there since there's no alternative. */
+const PEST_PHOTO_DB_NAME = 'sc-pest-photos';
+const PEST_PHOTO_STORE = 'photos';
+function openPestPhotoDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PEST_PHOTO_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PEST_PHOTO_STORE)) {
+        db.createObjectStore(PEST_PHOTO_STORE, { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function addPestPhoto(record) {
+  const db = await openPestPhotoDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PEST_PHOTO_STORE, 'readwrite');
+    const req = tx.objectStore(PEST_PHOTO_STORE).add(record);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function updatePestPhoto(id, patch) {
+  const db = await openPestPhotoDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PEST_PHOTO_STORE, 'readwrite');
+    const store = tx.objectStore(PEST_PHOTO_STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const rec = getReq.result;
+      if (!rec) return resolve(null);
+      Object.assign(rec, patch);
+      const putReq = store.put(rec);
+      putReq.onsuccess = () => resolve(rec);
+      putReq.onerror = () => reject(putReq.error);
+    };
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
+async function getAllPestPhotos() {
+  const db = await openPestPhotoDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PEST_PHOTO_STORE, 'readonly');
+    const req = tx.objectStore(PEST_PHOTO_STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+function resizePhotoToDataUrl(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => { img.src = reader.result; };
+    reader.onerror = () => reject(reader.error);
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => reject(new Error('Could not read photo'));
+    reader.readAsDataURL(file);
+  });
+}
+async function handlePestPhotoSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = ''; // allow re-selecting the same file later
+  if (!file) return;
+  try {
+    const dataUrl = await resizePhotoToDataUrl(file, 800);
+    await addPestPhoto({ dataUrl, timestamp: new Date().toISOString(), status: 'pending' });
+    await renderPestScanStatus();
+    tryAnalyzePendingPhotos();
+  } catch (e) {
+    console.error('handlePestPhotoSelected failed:', e);
+  }
+}
+function hasGoodConnectionForUpload() {
+  const c = navigator.connection;
+  if (c && c.type) return c.type === 'wifi';
+  return navigator.onLine; // no Network Information API support (e.g. iOS Safari) -- any connection
+}
+let pestScanInFlight = false;
+async function tryAnalyzePendingPhotos(manual) {
+  if (pestScanInFlight) return;
+  const okToTry = manual ? navigator.onLine : hasGoodConnectionForUpload();
+  if (!okToTry) return;
+  pestScanInFlight = true;
+  try {
+    const all = await getAllPestPhotos();
+    const pending = all.filter(p => p.status === 'pending');
+    for (const rec of pending) {
+      await updatePestPhoto(rec.id, { status: 'analyzing' });
+      await renderPestScanStatus();
+      try {
+        const res = await fetch('/.netlify/functions/pest-scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: rec.dataUrl }),
+        });
+        if (!res.ok) throw new Error('Analysis request failed: ' + res.status);
+        const result = await res.json();
+        await updatePestPhoto(rec.id, {
+          status: 'done',
+          resultPestId: result.pestId || null,
+          confidence: result.confidence || 'low',
+          reasoning: result.reasoning || '',
+        });
+      } catch (e) {
+        console.error('Pest photo analysis failed:', e);
+        await updatePestPhoto(rec.id, { status: 'pending' }); // retry on next attempt
+      }
+    }
+  } finally {
+    pestScanInFlight = false;
+    await renderPestScanStatus();
+  }
+}
+async function renderPestScanStatus() {
+  const statusEl = document.getElementById('pest-scan-status');
+  const historyEl = document.getElementById('pest-scan-history');
+  const analyzeBtn = document.getElementById('pest-scan-analyze-btn');
+  if (!statusEl) return; // Pests tab not in the DOM yet
+  let all;
+  try { all = await getAllPestPhotos(); } catch (e) { all = []; }
+  const pendingCount = all.filter(p => p.status === 'pending' || p.status === 'analyzing').length;
+  statusEl.textContent = pendingCount > 0
+    ? `${pendingCount} photo${pendingCount === 1 ? '' : 's'} waiting to be analyzed — will run automatically on Wi-Fi.`
+    : (all.length ? '' : '');
+  if (analyzeBtn) analyzeBtn.style.display = pendingCount > 0 ? '' : 'none';
+  if (!historyEl) return;
+  const done = all.filter(p => p.status === 'done').sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 8);
+  historyEl.innerHTML = done.map(rec => {
+    const pest = PEST_DATABASE.find(p => p.id === rec.resultPestId);
+    const label = pest ? pest.name : "No clear match — see the reference list below";
+    return `<div class="field-row" style="padding:8px 0;border-bottom:0.5px solid var(--border);cursor:${pest ? 'pointer' : 'default'};" ${pest ? `onclick="showPestDetail('${pest.id}')"` : ''}>
+      <span>${label}${rec.reasoning ? `<br><span style="font-size:12px;color:var(--text3);">${rec.reasoning}</span>` : ''}</span>
+      <span class="badge" style="background:var(--border2);color:var(--text2);flex-shrink:0;margin-left:8px;">${rec.confidence || ''}</span>
+    </div>`;
+  }).join('');
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tryAnalyzePendingPhotos(); });
+window.addEventListener('online', () => tryAnalyzePendingPhotos());
+setInterval(() => tryAnalyzePendingPhotos(), 15 * 60 * 1000);
+
+/* ── Declare a pest (manual, farmer-confirmed) ────────────────────────────
+   Tying a declaration to a field sets data[field].declaredPest, which
+   getStatus() and fieldCardRows() both read -- so a declared severe/high
+   risk pest immediately shows up as the field's health badge, same as any
+   other field reading. Declarations are also stored in their own
+   localStorage list (with lat/lng) so they can be drawn as precise pins on
+   the "Show pest spread" map layer, alongside the regional SRA circles.
+   Local-only for now, same as the photo-scan queue -- doesn't ride along
+   on the existing cloud data sync. */
+function populateDeclarePestSelects() {
+  const sel = document.getElementById('declare-pest-select');
+  if (sel) {
+    const sorted = [...PEST_DATABASE].sort((a, b) => (b.active - a.active) || (RISK_ORDER[b.risk] - RISK_ORDER[a.risk]));
+    sel.innerHTML = sorted.map(p => `<option value="${p.id}">${p.name}${p.active ? ' (active outbreak)' : ''}</option>`).join('');
+  }
+  const fieldSel = document.getElementById('declare-pest-field');
+  if (fieldSel) {
+    fieldSel.innerHTML = settings.fields.map(f => `<option value="${f}">${f}</option>`).join('');
+  }
+}
+function toggleDeclarePestPinMap() {
+  const usePin = document.getElementById('declare-pest-use-pin').checked;
+  const mapEl = document.getElementById('declare-pest-map');
+  const fieldSel = document.getElementById('declare-pest-field');
+  mapEl.style.display = usePin ? '' : 'none';
+  fieldSel.disabled = usePin;
+  if (usePin) setTimeout(initDeclarePestMap, 50);
+}
+let declarePestMap = null, declarePestMarker = null;
+function initDeclarePestMap() {
+  const container = document.getElementById('declare-pest-map');
+  if (!container || typeof L === 'undefined') return;
+  const lat = parseFloat(settings.lat) || 9.5928, lng = parseFloat(settings.lng) || 123.1218;
+  if (declarePestMap) { setTimeout(() => declarePestMap.invalidateSize(), 100); return; }
+  declarePestMap = L.map('declare-pest-map').setView([lat, lng], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(declarePestMap);
+  declarePestMarker = L.marker([lat, lng], { draggable: true }).addTo(declarePestMap);
+  declarePestMap.on('click', (e) => declarePestMarker.setLatLng(e.latlng));
+  setTimeout(() => declarePestMap.invalidateSize(), 150);
+}
+function getFieldLatLng(fieldName) {
+  const d = data[fieldName] || {};
+  if (d.boundary && d.boundary.length >= 3) {
+    const lats = d.boundary.map(p => p[0]), lngs = d.boundary.map(p => p[1]);
+    return [lats.reduce((a, b) => a + b, 0) / lats.length, lngs.reduce((a, b) => a + b, 0) / lngs.length];
+  }
+  if (settings.lat && settings.lng) {
+    const idx = Math.max(settings.fields.indexOf(fieldName), 0);
+    return offsetLatLng(parseFloat(settings.lat), parseFloat(settings.lng), idx, settings.fields.length || 1);
+  }
+  return null;
+}
+function declarePest() {
+  const pestId = document.getElementById('declare-pest-select').value;
+  const usePin = document.getElementById('declare-pest-use-pin').checked;
+  const fieldName = document.getElementById('declare-pest-field').value;
+  const msg = document.getElementById('declare-pest-msg');
+  let latlng = null;
+  if (usePin && declarePestMarker) {
+    const ll = declarePestMarker.getLatLng();
+    latlng = [ll.lat, ll.lng];
+  } else if (fieldName) {
+    latlng = getFieldLatLng(fieldName);
+  }
+  if (!pestId || !latlng) return;
+  if (fieldName && !usePin) {
+    if (!data[fieldName]) data[fieldName] = {};
+    data[fieldName].declaredPest = pestId;
+    data[fieldName].declaredPestDate = todayISO();
+    persistFields();
+    if (document.getElementById('tab-fields').style.display !== 'none') renderFieldGrid();
+  }
+  const declarations = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]');
+  declarations.push({ id: Date.now(), pestId, fieldName: (fieldName && !usePin) ? fieldName : null, lat: latlng[0], lng: latlng[1], date: todayISO() });
+  localStorage.setItem('sc_pest_declarations', JSON.stringify(declarations));
+  if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2000); }
+  renderPestDeclareHistory();
+  const mapToggle = document.getElementById('map-pest-toggle');
+  if (mapToggle && mapToggle.checked) renderPestSpreadLayer();
+}
+function renderPestDeclareHistory() {
+  const el = document.getElementById('declare-pest-history');
+  if (!el) return;
+  const declarations = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]').sort((a, b) => b.id - a.id).slice(0, 6);
+  el.innerHTML = declarations.map(dec => {
+    const pest = PEST_DATABASE.find(p => p.id === dec.pestId);
+    return `<div class="field-row" style="padding:6px 0;border-bottom:0.5px solid var(--border);">
+      <span>${pest ? pest.name : 'Unknown pest'}${dec.fieldName ? ` — ${dec.fieldName}` : ' — custom location'}</span>
+      <span style="color:var(--text3);font-size:12px;">${shortDate(dec.date)}</span>
+    </div>`;
+  }).join('');
 }
 
 /* ── Crop advisory (agronomic decision support) ──────────────────────────
@@ -2568,12 +2854,13 @@ renderHeader();
 /* ================= OVERVIEW (metrics + charts + calendar + weather + insights) ================= */
 let yieldChart = null, moistureChart = null;
 function getStatus(d) {
-  if (!d || (!d.yield && !d.moisture && !d.pest && !d.leafcolor && !d.height)) {
+  if (!d || (!d.yield && !d.moisture && !d.pest && !d.leafcolor && !d.height && !d.declaredPest)) {
     return (d && d.notes) ? 'logged' : 'none';
   }
   const moistureStatus = moistureStatusInfo(d).status;
-  if (d.pest==='severe' || (d.yield && parseFloat(d.yield)<2) || d.leafcolor==='yellow') return 'bad';
-  if (d.pest==='mild' || moistureStatus==='dry' || moistureStatus==='wet' || (d.yield && parseFloat(d.yield)<4) || d.leafcolor==='slight_yellow' || d.height==='lt1') return 'warn';
+  const declaredRisk = d.declaredPest ? (PEST_DATABASE.find(p=>p.id===d.declaredPest)||{}).risk : null;
+  if (d.pest==='severe' || declaredRisk==='severe' || declaredRisk==='high' || (d.yield && parseFloat(d.yield)<2) || d.leafcolor==='yellow') return 'bad';
+  if (d.pest==='mild' || declaredRisk==='moderate' || moistureStatus==='dry' || moistureStatus==='wet' || (d.yield && parseFloat(d.yield)<4) || d.leafcolor==='slight_yellow' || d.height==='lt1') return 'warn';
   return 'good';
 }
 function renderOverview() {
@@ -2715,6 +3002,7 @@ function fieldCardRows(d) {
     rows += `<div class="field-row"><span>Moisture</span><span>${moistureDisplay(d)}</span></div>`;
     rows += `<div class="field-row"><span>Irrigated</span><span>${(d&&d.irrigationCount)||0}${d&&d.lastIrrigated?' · '+weekOfShort(d.lastIrrigated):''}</span></div>`;
     rows += `<div class="field-row"><span>Pest</span><span>${d&&d.pest?({none:'None',mild:'Mild',severe:'Severe'}[d.pest]):'—'}</span></div>`;
+    if (d && d.declaredPest) { const dp = PEST_DATABASE.find(p=>p.id===d.declaredPest); rows += `<div class="field-row"><span>Declared pest</span><span>${dp?dp.name:d.declaredPest}</span></div>`; }
     rows += `<div class="field-row"><span>Height</span><span>${d&&d.height?HEIGHT_LABELS[d.height]:'—'}</span></div>`;
     rows += `<div class="field-row"><span>Leaf color</span><span>${d&&d.leafcolor?({green:'Green',light_green:'Light green',slight_yellow:'Slight yellow',yellow:'Yellow'}[d.leafcolor]):'—'}</span></div>`;
     rows += `<div class="field-row"><span>Fertilizer</span><span>${d&&d.fertMix?d.fertMix:(d&&d.fert==='yes'?'Applied':'Not yet')}</span></div>`;
@@ -2733,6 +3021,7 @@ function fieldCardRows(d) {
       if (win) rows += `<div class="field-row"><span>Harvest by</span><span>${monthYear(win.to)}</span></div>`;
       rows += `<div class="field-row"><span>Moisture</span><span>${moistureDisplay(d)}</span></div>`;
       rows += `<div class="field-row"><span>Pest</span><span>${d&&d.pest?({none:'None',mild:'Mild',severe:'Severe'}[d.pest]):'—'}</span></div>`;
+      if (d && d.declaredPest) { const dp = PEST_DATABASE.find(p=>p.id===d.declaredPest); rows += `<div class="field-row"><span>Declared pest</span><span>${dp?dp.name:d.declaredPest}</span></div>`; }
       rows += `<div class="field-row"><span>Leaf color</span><span>${d&&d.leafcolor?({green:'Green',light_green:'Light green',slight_yellow:'Slight yellow',yellow:'Yellow'}[d.leafcolor]):'—'}</span></div>`;
       rows += `<div class="field-row"><span>Fertilizer</span><span>${d&&d.fertMix?d.fertMix:(d&&d.fert==='yes'?'Applied':'Not yet')}</span></div>`;
     }
@@ -4492,6 +4781,20 @@ function renderPestSpreadLayer() {
       `<span style="color:#888;font-size:12px;">As of ${o.asOf} — SRA-reported estimate, manually updated, not a live feed</span>`
     );
     bounds.push([o.lat, o.lng]);
+  });
+  // Farmer's own declared sightings -- precise points, drawn as solid
+  // pins rather than translucent regional circles so they read as a
+  // different kind of data (confirmed-by-you vs. regional SRA estimate).
+  const declarations = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]');
+  declarations.forEach(dec => {
+    const pest = PEST_DATABASE.find(p => p.id === dec.pestId);
+    const color = pest ? (PEST_RISK_COLOR[pest.risk] || '#888780') : '#888780';
+    const marker = L.circleMarker([dec.lat, dec.lng], { radius: 8, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(pestLayerGroup);
+    marker.bindPopup(
+      `<strong>${pest ? pest.name : 'Pest'}</strong> (declared by you)<br>${dec.fieldName || 'Custom location'}<br>` +
+      `<span style="color:#888;font-size:12px;">Reported ${dec.date}</span>`
+    );
+    bounds.push([dec.lat, dec.lng]);
   });
   if (settings.lat && settings.lng) bounds.push([parseFloat(settings.lat), parseFloat(settings.lng)]);
   if (bounds.length > 1) { try { map.fitBounds(bounds, { padding: [40, 40] }); } catch (e) {} }
