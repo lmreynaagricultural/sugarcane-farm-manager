@@ -2359,13 +2359,47 @@ function declarePest() {
     if (document.getElementById('tab-fields').style.display !== 'none') renderFieldGrid();
   }
   const declarations = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]');
-  declarations.push({ id: Date.now(), pestId, fieldName: (fieldName && !usePin) ? fieldName : null, lat: latlng[0], lng: latlng[1], date: todayISO() });
+  declarations.push({ id: Date.now(), pestId, fieldName: (fieldName && !usePin) ? fieldName : null, lat: latlng[0], lng: latlng[1], date: todayISO(), synced: false });
   localStorage.setItem('sc_pest_declarations', JSON.stringify(declarations));
   if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2000); }
   renderPestDeclareHistory();
   const mapToggle = document.getElementById('map-pest-toggle');
   if (mapToggle && mapToggle.checked) renderPestSpreadLayer();
+  syncPestDeclarations();
 }
+
+/* Declarations are pushed to a shared (not per-user) Supabase table via
+   pest-declare.js, so every farmer's map shows the whole community's
+   reports -- not just their own. Works with zero signal: unsynced records
+   just sit in localStorage until connectivity returns. No Wi-Fi gate here
+   (unlike photo analysis) since this payload is a few bytes of JSON, not
+   an image -- data cost isn't a real concern at this size. */
+let pestDeclareSyncInFlight = false;
+async function syncPestDeclarations() {
+  if (pestDeclareSyncInFlight || !navigator.onLine) return;
+  pestDeclareSyncInFlight = true;
+  try {
+    const declarations = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]');
+    let changed = false;
+    for (const rec of declarations) {
+      if (rec.synced) continue;
+      try {
+        const res = await fetch('/.netlify/functions/pest-declare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pestId: rec.pestId, lat: rec.lat, lng: rec.lng, date: rec.date }),
+        });
+        if (res.ok) { rec.synced = true; changed = true; }
+      } catch (e) { /* stays unsynced, retried on the next trigger */ }
+    }
+    if (changed) localStorage.setItem('sc_pest_declarations', JSON.stringify(declarations));
+  } finally {
+    pestDeclareSyncInFlight = false;
+  }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncPestDeclarations(); });
+window.addEventListener('online', () => syncPestDeclarations());
+setInterval(() => syncPestDeclarations(), 15 * 60 * 1000);
 function renderPestDeclareHistory() {
   const el = document.getElementById('declare-pest-history');
   if (!el) return;
@@ -4763,18 +4797,22 @@ function togglePestSpreadLayer() {
   syncPestToggleUI();
   renderPestSpreadLayer();
 }
-function renderPestSpreadLayer() {
+let pestLayerGeneration = 0;
+async function renderPestSpreadLayer() {
+  const myGen = ++pestLayerGeneration;
   const map = fieldsMapInstances['fields-map-full'];
   if (!map) return;
   if (pestLayerGroup) { try { map.removeLayer(pestLayerGroup); } catch (e) {} pestLayerGroup = null; }
   if (!showPestSpread) return;
-  pestLayerGroup = L.layerGroup().addTo(map);
+
+  const newLayerGroup = L.layerGroup();
   const bounds = [];
+
   PEST_OUTBREAK_DATA.forEach(o => {
     const pest = PEST_DATABASE.find(p => p.id === o.pestId);
     const color = PEST_RISK_COLOR[o.severity] || '#888780';
     const radiusM = Math.max(3000, Math.sqrt(o.hectares || 100) * 250);
-    const circle = L.circle([o.lat, o.lng], { radius: radiusM, color, weight: 1.5, fillColor: color, fillOpacity: 0.22 }).addTo(pestLayerGroup);
+    const circle = L.circle([o.lat, o.lng], { radius: radiusM, color, weight: 1.5, fillColor: color, fillOpacity: 0.22 }).addTo(newLayerGroup);
     circle.bindPopup(
       `<strong>${pest ? pest.name : 'Pest'}</strong><br>${o.place}<br>` +
       `${o.hectares ? o.hectares.toLocaleString() + ' ha affected (regional estimate)' : ''}<br>` +
@@ -4782,20 +4820,42 @@ function renderPestSpreadLayer() {
     );
     bounds.push([o.lat, o.lng]);
   });
-  // Farmer's own declared sightings -- precise points, drawn as solid
-  // pins rather than translucent regional circles so they read as a
-  // different kind of data (confirmed-by-you vs. regional SRA estimate).
-  const declarations = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]');
-  declarations.forEach(dec => {
+
+  // Community declarations from every farmer using the app, via the shared
+  // pest_declarations table -- not just this device's own reports. Drawn
+  // as solid pins, distinct from the translucent regional SRA circles.
+  let community = [];
+  try {
+    const res = await fetch('/.netlify/functions/pest-declare');
+    if (res.ok) { const j = await res.json(); community = j.declarations || []; }
+  } catch (e) { /* offline or function unreachable -- just skip this layer for now */ }
+  if (myGen !== pestLayerGeneration || !showPestSpread) return; // toggled off / superseded while awaiting the fetch
+  community.forEach(dec => {
     const pest = PEST_DATABASE.find(p => p.id === dec.pestId);
     const color = pest ? (PEST_RISK_COLOR[pest.risk] || '#888780') : '#888780';
-    const marker = L.circleMarker([dec.lat, dec.lng], { radius: 8, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(pestLayerGroup);
+    const marker = L.circleMarker([dec.lat, dec.lng], { radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(newLayerGroup);
+    marker.bindPopup(`<strong>${pest ? pest.name : 'Pest'}</strong> (reported by a farmer)<br><span style="color:#888;font-size:12px;">${dec.date}</span>`);
+    bounds.push([dec.lat, dec.lng]);
+  });
+
+  // This device's own not-yet-synced declarations (offline, still queued) --
+  // drawn hollow so they read as "pending" rather than confirmed community
+  // data. Once synced they show up via the community fetch above instead,
+  // so they're excluded here to avoid a duplicate pin.
+  const pendingLocal = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]').filter(d => !d.synced);
+  pendingLocal.forEach(dec => {
+    const pest = PEST_DATABASE.find(p => p.id === dec.pestId);
+    const color = pest ? (PEST_RISK_COLOR[pest.risk] || '#888780') : '#888780';
+    const marker = L.circleMarker([dec.lat, dec.lng], { radius: 8, color, weight: 2, fillColor: '#fff', fillOpacity: 0.5, dashArray: '3,2' }).addTo(newLayerGroup);
     marker.bindPopup(
-      `<strong>${pest ? pest.name : 'Pest'}</strong> (declared by you)<br>${dec.fieldName || 'Custom location'}<br>` +
-      `<span style="color:#888;font-size:12px;">Reported ${dec.date}</span>`
+      `<strong>${pest ? pest.name : 'Pest'}</strong> (declared by you — syncing)<br>${dec.fieldName || 'Custom location'}<br>` +
+      `<span style="color:#888;font-size:12px;">${dec.date}</span>`
     );
     bounds.push([dec.lat, dec.lng]);
   });
+
+  newLayerGroup.addTo(map);
+  pestLayerGroup = newLayerGroup;
   if (settings.lat && settings.lng) bounds.push([parseFloat(settings.lat), parseFloat(settings.lng)]);
   if (bounds.length > 1) { try { map.fitBounds(bounds, { padding: [40, 40] }); } catch (e) {} }
 }
