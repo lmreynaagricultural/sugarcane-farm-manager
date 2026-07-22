@@ -232,6 +232,7 @@
     <button class="tab active" onclick="showTab('overview')" title="Overview"><i class="ti ti-layout-dashboard" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
     <button class="tab" onclick="showTab('map')" title="Map"><i class="ti ti-map" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Map</span></button>
     <button class="tab" onclick="showTab('fields')" title="Fields"><i class="ti ti-layout-grid" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Fields</span></button>
+    <button class="tab" onclick="showTab('pests')" title="Pests"><i class="ti ti-bug" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Pests</span></button>
     <button class="tab" onclick="showTab('workers')" title="Workers"><i class="ti ti-users" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Workers</span></button>
     <button class="tab" onclick="showTab('expenses')" title="Expenses"><i class="ti ti-cash" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Expenses</span></button>
     <button class="tab" onclick="showTab('export')" title="Export"><i class="ti ti-download" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i><span class="tab-label">Export</span></button>
@@ -411,6 +412,23 @@
         <div class="legend-item"><div class="legend-dot" style="background:#378ADD;"></div>Planting</div>
         <div class="legend-item"><div class="legend-dot" style="background:#2FC9A4;"></div>Growing</div>
         <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>Harvest</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border);">
+        <div>
+          <div style="font-size:15px;font-weight:500;color:var(--text);">Show pest spread</div>
+          <div style="font-size:13px;color:var(--text2);margin-top:2px;">Reported outbreak areas — zoom out to see them relative to your farm.</div>
+        </div>
+        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:16px;">
+          <input type="checkbox" id="map-pest-toggle" style="opacity:0;width:0;height:0;position:absolute;" onchange="togglePestSpreadLayer()">
+          <span id="map-pest-track" style="position:absolute;inset:0;border-radius:24px;background:var(--border2);transition:background 0.2s;cursor:pointer;" onclick="document.getElementById('map-pest-toggle').click()"></span>
+          <span id="map-pest-thumb" style="position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:white;transition:transform 0.2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
+        </label>
+      </div>
+      <div class="legend" id="map-pest-legend" style="margin-top:10px;display:none;">
+        <div class="legend-item"><div class="legend-dot" style="background:#E24B4A;"></div>Severe</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>High</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#378ADD;"></div>Moderate</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#888780;"></div>Low</div>
       </div>
     </div>
     <div class="panel" id="map-recommendations-panel">
@@ -659,6 +677,21 @@
         <p class="form-error" id="f-error"></p>
       </div>
     </div>
+  </div>
+
+  <!-- ============ PESTS ============ -->
+  <div id="tab-pests" style="display:none;">
+    <div class="panel" id="pest-checklist-panel">
+      <div class="panel-title">Identify a pest</div>
+      <p style="font-size:15px;color:var(--text2);margin-bottom:14px;">Answer a couple of questions about what you're seeing to narrow it down. This works offline — no camera or internet needed.</p>
+      <div id="pest-checklist-content"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Pests affecting sugarcane in the Philippines</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Reference guide — tap a pest for symptoms and what to do about it.</p>
+      <div id="pest-database-list"></div>
+    </div>
+    <div class="panel" id="pest-detail-panel" style="display:none;"></div>
   </div>
 
   <!-- ============ EXPENSES ============ -->
@@ -1915,6 +1948,151 @@ const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 const PHASE_BADGE = {prep:'badge-none', planting:'badge-blue', growing:'badge-good', harvest:'badge-warn'};
 const PHASE_COLOR = {prep:'#888780', planting:'#378ADD', growing:'#2FC9A4', harvest:'#C85A0A'};
 
+/* ── Pest reference (Philippine sugarcane) ───────────────────────────────
+   RSSI is flagged 'active' because it's a real, ongoing national outbreak
+   (SRA data, mid-2026) — not just one entry among equals. Sources: SRA
+   press bulletins, PHILSURIN advisory, UPLB pest management guidance. */
+const PEST_DATABASE = [
+  { id:'rssi', name:'Red-striped soft scale insect (RSSI)', sciName:'Pulvinaria tenuivalvata', type:'Sap-sucking scale insect', risk:'severe', active:true,
+    symptoms:'Starts on the lower, older leaves and moves upward as it spreads. Affected leaves turn yellow, dry out, and wilt. Produces sticky honeydew that grows black sooty mold across the leaf surface.',
+    stage:'Any stage — most damaging during tillering/growing',
+    management:'Report it to your local SRA office — this is under active national monitoring as of 2026. Don’t move cane stalks or planting material from an infested field to a clean one. SRA is scaling up Beauveria bassiana/Metarhizium fungal biocontrol sprays. Cut and destroy heavily sooty-mold-covered leaves.' },
+  { id:'whitegrub', name:'White grub', sciName:'Leucopholis irrorata', type:'Root-feeding beetle larva', risk:'high', active:false,
+    symptoms:'Yellowing, stunted growth, and canes that suddenly topple over because the roots and stem base have been eaten away. Larvae are white, C-shaped, up to 2.5cm — check the soil around the base of an affected stalk.',
+    stage:'Early growth, most damaging in the first few months',
+    management:'Community beetle-collection during adult emergence (evenings, over about 3 weeks) significantly cuts next season’s population. Avoid replanting immediately into heavily infested soil.' },
+  { id:'borer', name:'Sugarcane stem borer', sciName:'Tetramoera schistaceana / Chilo infuscatellus', type:'Stem-boring moth larva', risk:'high', active:false,
+    symptoms:'Look for “dead heart” — the central young shoot dies and pulls out easily, often with a rotten smell. Small entry holes near the base of young stalks.',
+    stage:'Young plants, 1–3 months',
+    management:'Field release of Trichogramma chilonis (a tiny parasitic wasp) is the standard low-cost control, released as egg-parasite cards early in the young-cane stage. Remove and destroy dead-heart shoots.' },
+  { id:'rats', name:'Rats / rodents', sciName:'Rattus spp.', type:'Vertebrate pest', risk:'moderate', active:false,
+    symptoms:'Gnawed or hollowed-out stalks, usually near the base. Damage tends to cluster near field edges, canals, or grassy borders.',
+    stage:'Any stage — most damage near maturity when stalks are sweetest',
+    management:'Trapping and approved rodenticide bait stations along field edges and canal banks. Keep field borders clear of tall grass, which gives rats cover.' },
+  { id:'aphid', name:'Sugarcane / yellow aphid', sciName:'Melanaphis sacchari / Sipha flava', type:'Sap-sucking insect', risk:'moderate', active:false,
+    symptoms:'Clusters of small insects on the underside of leaves, sticky honeydew, sooty mold, and leaf yellowing — similar to RSSI but usually more localized.',
+    stage:'Any stage',
+    management:'Encourage natural predators (ladybird beetles, lacewings). Heavy infestations may need targeted insecticide — consult your local agricultural technician before spraying.' },
+  { id:'mealybug', name:'Pink sugarcane mealybug', sciName:'Saccharicoccus sacchari', type:'Sap-sucking insect', risk:'moderate', active:false,
+    symptoms:'White, cottony wax masses clustered at leaf sheaths and nodes on the stalk.',
+    stage:'Any stage',
+    management:'Remove and destroy heavily infested lower leaves/sheaths. Avoid excess nitrogen fertilizer, which can encourage buildup.' },
+  { id:'leafhopper', name:'Sugarcane leafhopper', sciName:'Pyrilla perpusilla / Perkinsiella saccharicida', type:'Sap-sucking insect', risk:'low', active:false,
+    symptoms:'Pale yellow-white mottling and “hopper burn” on leaves; small jumping insects visible when leaves are disturbed.',
+    stage:'Any stage',
+    management:'Usually kept in check by natural predators/parasites. Consult an agriculturist if damage spreads quickly.' },
+  { id:'lacebug', name:'Sugarcane lace bug', sciName:'Leptodictya tabida', type:'Sap-sucking insect', risk:'low', active:false,
+    symptoms:'Fine, lace-like stippling on the underside of leaves, giving them a bleached, speckled look.',
+    stage:'Any stage',
+    management:'Usually a minor pest — monitor and treat only if damage becomes widespread.' },
+  { id:'termite', name:'Termites', sciName:'Various species', type:'Soil/stem-feeding insect', risk:'low', active:false,
+    symptoms:'Hollowed stalks near the soil line, mud tunnels on the stem surface.',
+    stage:'Any stage, especially in dry conditions',
+    management:'Avoid leaving crop residue or stumps in the field — they attract termite colonies. Consult an agriculturist for soil treatment if severe.' },
+];
+const PEST_RISK_COLOR = { severe:'#E24B4A', high:'#C85A0A', moderate:'#378ADD', low:'#888780' };
+const PEST_RISK_LABEL = { severe:'Severe', high:'High', moderate:'Moderate', low:'Low' };
+
+/* Guided visual checklist — no camera/ML needed, works fully offline.
+   Each node is either a question (with options that branch to another
+   node or resolve to a pest id) or a terminal result. */
+const PEST_CHECKLIST = {
+  start: { question:'Where do you see the damage?', options:[
+    { label:'Sticky residue or black mold on leaves', next:'sticky' },
+    { label:'Lace-like speckled pattern on leaves', pest:'lacebug' },
+    { label:'Central young shoot is dead or wilted ("dead heart")', pest:'borer' },
+    { label:'Holes or hollow sections in the stalk', next:'stalk' },
+    { label:'Plant toppled over, roots weak or eaten', pest:'whitegrub' },
+    { label:'Not sure — let me browse all pests', pest:null },
+  ]},
+  sticky: { question:'Look closer at the sticky or moldy area:', options:[
+    { label:'Starts on lower leaves, spreading upward, widespread yellowing', pest:'rssi' },
+    { label:'White, cottony fuzzy masses at leaf joints/nodes', pest:'mealybug' },
+    { label:'Small clusters of tiny insects under the leaves', pest:'aphid' },
+  ]},
+  stalk: { question:'What does the stalk damage look like?', options:[
+    { label:'Gnawed or hollowed near the base, chew marks visible', pest:'rats' },
+    { label:'Mud tunnels on the surface, hollow near the soil line', pest:'termite' },
+    { label:'Small tunnels through the interior of the stem', pest:'borer' },
+  ]},
+};
+
+/* Manually curated seed data — there is no public SRA API or live feed,
+   so this needs periodic manual updates from SRA/press bulletins. Figures
+   below are SRA-reported estimates as of the dates shown; treat them as
+   illustrative, not authoritative-to-the-day. */
+const PEST_OUTBREAK_DATA = [
+  { pestId:'rssi', place:'Kabankalan City, Negros Occidental', lat:9.9878, lng:122.8206, hectares:6686, severity:'severe', asOf:'2026-06-26' },
+  { pestId:'rssi', place:'Cadiz City, Negros Occidental', lat:10.9489, lng:123.2903, hectares:5196, severity:'severe', asOf:'2026-06-26' },
+  { pestId:'rssi', place:'Negros Oriental (province-wide)', lat:9.5000, lng:123.1500, hectares:1571.33, severity:'high', asOf:'2026-06-26' },
+  { pestId:'rssi', place:'Capiz', lat:11.5851, lng:122.7511, hectares:22.03, severity:'low', asOf:'2026-05-29' },
+];
+
+/* ── Pests tab ────────────────────────────────────────────────────────── */
+let pestChecklistNode = 'start';
+function renderPestsTab() {
+  renderPestChecklist();
+  renderPestDatabaseList();
+  document.getElementById('pest-detail-panel').style.display = 'none';
+}
+function renderPestChecklist() {
+  const el = document.getElementById('pest-checklist-content');
+  const node = PEST_CHECKLIST[pestChecklistNode];
+  if (!node) { pestChecklistNode = 'start'; return renderPestChecklist(); }
+  const optionsHtml = node.options.map((o, i) =>
+    `<button class="btn" style="display:block;width:100%;text-align:left;margin-bottom:8px;" onclick="pestChecklistChoose(${i})">${o.label}</button>`
+  ).join('');
+  const backHtml = pestChecklistNode !== 'start'
+    ? `<button class="btn" style="margin-top:4px;" onclick="pestChecklistReset()">Start over</button>` : '';
+  el.innerHTML = `<p style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:10px;">${node.question}</p>${optionsHtml}${backHtml}`;
+}
+function pestChecklistChoose(i) {
+  const node = PEST_CHECKLIST[pestChecklistNode];
+  const choice = node.options[i];
+  if (choice.next) {
+    pestChecklistNode = choice.next;
+    renderPestChecklist();
+  } else if (choice.pest) {
+    showPestDetail(choice.pest);
+    document.getElementById('pest-detail-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    document.getElementById('pest-database-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+function pestChecklistReset() {
+  pestChecklistNode = 'start';
+  renderPestChecklist();
+}
+function renderPestDatabaseList() {
+  const el = document.getElementById('pest-database-list');
+  const sorted = [...PEST_DATABASE].sort((a, b) => (b.active - a.active) || (RISK_ORDER[b.risk] - RISK_ORDER[a.risk]));
+  el.innerHTML = sorted.map(p => `
+    <div class="field-row" style="cursor:pointer;align-items:center;padding:9px 0;border-bottom:0.5px solid var(--border);" onclick="showPestDetail('${p.id}')">
+      <span>${p.name}${p.active ? ' <span class="badge" style="background:var(--red-light);color:var(--red-text);margin-left:4px;">Active outbreak</span>' : ''}</span>
+      <span class="badge" style="background:${PEST_RISK_COLOR[p.risk]}22;color:${PEST_RISK_COLOR[p.risk]};flex-shrink:0;margin-left:8px;">${PEST_RISK_LABEL[p.risk]}</span>
+    </div>`).join('');
+}
+const RISK_ORDER = { severe:4, high:3, moderate:2, low:1 };
+function showPestDetail(pestId) {
+  const p = PEST_DATABASE.find(x => x.id === pestId);
+  const panel = document.getElementById('pest-detail-panel');
+  if (!p) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  panel.innerHTML = `
+    <div class="panel-title" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <span>${p.name}${p.active ? '<br><span class="badge" style="background:var(--red-light);color:var(--red-text);margin-top:4px;display:inline-block;">Active national outbreak</span>' : ''}</span>
+      <button class="btn" style="padding:3px 10px;font-size:13px;flex-shrink:0;" onclick="document.getElementById('pest-detail-panel').style.display='none';">Close</button>
+    </div>
+    <p style="font-size:13px;color:var(--text2);font-style:italic;margin:6px 0 12px;">${p.sciName} — ${p.type}</p>
+    <p class="section-label">Symptoms</p>
+    <p style="font-size:15px;margin-bottom:12px;">${p.symptoms}</p>
+    <p class="section-label">Affected stage</p>
+    <p style="font-size:15px;margin-bottom:12px;">${p.stage}</p>
+    <p class="section-label">What to do</p>
+    <p style="font-size:15px;">${p.management}</p>
+  `;
+}
+
 /* ── Crop advisory (agronomic decision support) ──────────────────────────
    Stage (farmer-reported) is ground truth -- it already reflects real
    conditions like drought or late rainfall that a textbook DAP model
@@ -2168,13 +2346,14 @@ function farmTotalAcres() {
 
 
 /* ---------------- Tab switching ---------------- */
-const TABS = ['overview','map','fields','workers','expenses','export','settings'];
+const TABS = ['overview','map','fields','pests','workers','expenses','export','settings'];
 function showTab(t) {
   TABS.forEach(id => { document.getElementById('tab-'+id).style.display = id===t ? '' : 'none'; });
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', TABS[i]===t));
   if (t==='overview') renderOverview();
   if (t==='map') renderMapTab();
   if (t==='fields') renderFieldsTab();
+  if (t==='pests') renderPestsTab();
   if (t==='expenses') renderExpensesTab();
   if (t==='workers') renderWorkersTab();
   if (t==='export') renderExport();
@@ -4265,6 +4444,57 @@ function renderMapTab() {
   renderFieldsMap('fields-map-full', { onFieldClick: showMapFieldSummary });
   document.getElementById('map-field-summary-panel').style.display = 'none';
   renderMapRecommendations();
+  // renderFieldsMap just tore down and recreated the underlying Leaflet map,
+  // so any previous pest layer group was destroyed along with it.
+  pestLayerGroup = null;
+  syncPestToggleUI();
+  renderPestSpreadLayer();
+}
+
+/* ── Pest spread layer on the fields map ──────────────────────────────────
+   Toggle-driven overlay of PEST_OUTBREAK_DATA. Regions are drawn as large
+   translucent circles (not precise field-level markers) since the
+   underlying data is a municipality/province-level aggregate, not an
+   exact infested plot -- the popup text says so explicitly. */
+let showPestSpread = localStorage.getItem('sc_show_pest_spread') === '1';
+let pestLayerGroup = null;
+function syncPestToggleUI() {
+  const t = document.getElementById('map-pest-toggle');
+  const track = document.getElementById('map-pest-track');
+  const thumb = document.getElementById('map-pest-thumb');
+  const legend = document.getElementById('map-pest-legend');
+  if (t) t.checked = showPestSpread;
+  if (track) track.style.background = showPestSpread ? 'var(--green)' : 'var(--border2)';
+  if (thumb) thumb.style.transform = showPestSpread ? 'translateX(20px)' : 'translateX(0)';
+  if (legend) legend.style.display = showPestSpread ? 'flex' : 'none';
+}
+function togglePestSpreadLayer() {
+  showPestSpread = document.getElementById('map-pest-toggle').checked;
+  localStorage.setItem('sc_show_pest_spread', showPestSpread ? '1' : '0');
+  syncPestToggleUI();
+  renderPestSpreadLayer();
+}
+function renderPestSpreadLayer() {
+  const map = fieldsMapInstances['fields-map-full'];
+  if (!map) return;
+  if (pestLayerGroup) { try { map.removeLayer(pestLayerGroup); } catch (e) {} pestLayerGroup = null; }
+  if (!showPestSpread) return;
+  pestLayerGroup = L.layerGroup().addTo(map);
+  const bounds = [];
+  PEST_OUTBREAK_DATA.forEach(o => {
+    const pest = PEST_DATABASE.find(p => p.id === o.pestId);
+    const color = PEST_RISK_COLOR[o.severity] || '#888780';
+    const radiusM = Math.max(3000, Math.sqrt(o.hectares || 100) * 250);
+    const circle = L.circle([o.lat, o.lng], { radius: radiusM, color, weight: 1.5, fillColor: color, fillOpacity: 0.22 }).addTo(pestLayerGroup);
+    circle.bindPopup(
+      `<strong>${pest ? pest.name : 'Pest'}</strong><br>${o.place}<br>` +
+      `${o.hectares ? o.hectares.toLocaleString() + ' ha affected (regional estimate)' : ''}<br>` +
+      `<span style="color:#888;font-size:12px;">As of ${o.asOf} — SRA-reported estimate, manually updated, not a live feed</span>`
+    );
+    bounds.push([o.lat, o.lng]);
+  });
+  if (settings.lat && settings.lng) bounds.push([parseFloat(settings.lat), parseFloat(settings.lng)]);
+  if (bounds.length > 1) { try { map.fitBounds(bounds, { padding: [40, 40] }); } catch (e) {} }
 }
 let mapRecsExpanded = false;
 function toggleMapRecsExpanded() {
