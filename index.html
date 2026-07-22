@@ -407,11 +407,14 @@
       <div class="panel-title">Your fields, mapped</div>
       <p style="font-size:17px;color:var(--text2);margin-bottom:12px;">Fields you've traced on the satellite map show their real outline. Fields you haven't measured yet show as a pin at your farm's registered location — tap "Measure on satellite map" on any field to trace its actual shape.</p>
       <div id="fields-map-full" style="height:420px;border-radius:var(--radius);overflow:hidden;"></div>
-      <div class="legend" style="margin-top:12px;">
-        <div class="legend-item"><div class="legend-dot" style="background:#888780;"></div>Land prep</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#378ADD;"></div>Planting</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#2FC9A4;"></div>Growing</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>Harvest</div>
+      <div id="map-stage-legend">
+        <p class="section-label" style="margin-bottom:6px;">Field growth stage</p>
+        <div class="legend" style="margin-top:0;">
+          <div class="legend-item"><div class="legend-dot" style="background:#888780;"></div>Land prep</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#378ADD;"></div>Planting</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#2FC9A4;"></div>Growing</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>Harvest</div>
+        </div>
       </div>
       <div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -426,11 +429,14 @@
         </div>
         <p id="map-pest-loading" style="font-size:13px;color:var(--text2);margin-top:8px;display:none;"><i class="ti ti-loader-2" style="vertical-align:-2px;" aria-hidden="true"></i> Loading pest reports…</p>
       </div>
-      <div class="legend" id="map-pest-legend" style="margin-top:10px;display:none;">
-        <div class="legend-item"><div class="legend-dot" style="background:#E24B4A;"></div>Severe</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>High</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#378ADD;"></div>Moderate</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#888780;"></div>Low</div>
+      <div id="map-pest-legend-wrap" style="display:none;margin-top:10px;">
+        <p class="section-label" style="margin-bottom:6px;">Pest severity (map colors below refer to this, not field growth stage, while this overlay is on)</p>
+        <div class="legend" id="map-pest-legend" style="margin-top:0;">
+          <div class="legend-item"><div class="legend-dot" style="background:#E24B4A;"></div>Severe</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>High</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#378ADD;"></div>Moderate</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#888780;"></div>Low</div>
+        </div>
       </div>
     </div>
     <div class="panel" id="map-recommendations-panel">
@@ -4909,10 +4915,15 @@ let showPestSpread = localStorage.getItem('sc_show_pest_spread') === '1';
 let pestLayerGroup = null;
 function syncPestToggleUI() {
   const sel = document.getElementById('map-pest-select');
-  const legend = document.getElementById('map-pest-legend');
+  const legendWrap = document.getElementById('map-pest-legend-wrap');
+  const stageLegend = document.getElementById('map-stage-legend');
   const loading = document.getElementById('map-pest-loading');
   if (sel) sel.value = showPestSpread ? 'on' : 'off';
-  if (legend) legend.style.display = showPestSpread ? 'flex' : 'none';
+  // Only one legend on screen at a time -- the field-stage and pest-severity
+  // legends share some colors (e.g. orange, gray), so showing both together
+  // made it ambiguous which one a given map color referred to.
+  if (legendWrap) legendWrap.style.display = showPestSpread ? '' : 'none';
+  if (stageLegend) stageLegend.style.display = showPestSpread ? 'none' : '';
   if (loading) loading.style.display = 'none'; // renderPestSpreadLayer shows it again while it's actually working
 }
 function onPestSpreadSelectChange() {
