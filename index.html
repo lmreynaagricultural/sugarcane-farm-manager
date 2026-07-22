@@ -4948,7 +4948,15 @@ async function renderPestSpreadLayer() {
   PEST_OUTBREAK_DATA.forEach(o => {
     const pest = PEST_DATABASE.find(p => p.id === o.pestId);
     const color = PEST_RISK_COLOR[o.severity] || '#888780';
-    const radiusM = Math.max(3000, Math.sqrt(o.hectares || 100) * 250);
+    // Area-accurate, not radius-accurate: the circle's AREA (not its
+    // radius) matches the reported hectares, converted to km². Treating
+    // hectares as a radius (as an earlier version of this did) massively
+    // overstates the affected footprint -- a 61,242ha figure isn't a
+    // ~60km-radius disc of infested cane, it's that much total area
+    // scattered across many separate farms (some of which aren't even
+    // sugarcane) within a much wider region. sqrt(ha / (100*pi)) * 1000
+    // converts hectares to a real-world radius in meters at true scale.
+    const radiusM = Math.max(1500, Math.sqrt((o.hectares || 25) / (100 * Math.PI)) * 1000);
     const circle = L.circle([o.lat, o.lng], {
       radius: radiusM, color, weight: 1.5, fillColor: color, fillOpacity: 0.22,
       dashArray: o.ownerReported ? '6,4' : null,
@@ -4959,7 +4967,8 @@ async function renderPestSpreadLayer() {
     circle.bindPopup(
       `<strong>${pest ? pest.name : 'Pest'}</strong><br>${o.place}<br>` +
       `${o.hectares ? o.hectares.toLocaleString() + ' ha affected (regional estimate)' : ''}<br>` +
-      `<span style="color:#888;font-size:12px;">As of ${o.asOf} — ${provenance}</span>`
+      `<span style="color:#888;font-size:12px;">As of ${o.asOf} — ${provenance}<br>` +
+      `Circle size shows total affected area, not a solid infected zone — those hectares are scattered across many separate farms within this wider region, and not everything inside the circle is even sugarcane land.</span>`
     );
     bounds.push([o.lat, o.lng]);
   });
