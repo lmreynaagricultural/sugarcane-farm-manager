@@ -681,7 +681,13 @@
 
   <!-- ============ PESTS ============ -->
   <div id="tab-pests" style="display:none;">
-    <div class="panel">
+    <!-- Shelved as a future pro feature (Claude vision costs money per
+         scan) -- not something to put in front of farmers already under
+         financial strain by default. Structure is kept intact end-to-end
+         (this panel, the IndexedDB queue, pest-scan.js) so it's a one-line
+         flip (PRO_FEATURES_ENABLED below) whenever there's an actual pro
+         tier to attach it to. -->
+    <div class="panel" id="pest-scan-panel">
       <div class="panel-title">Scan a pest with your camera</div>
       <p style="font-size:15px;color:var(--text2);margin-bottom:12px;">Take a photo anytime, even with no signal in the field — it's saved on your phone and analyzed automatically the next time you're on Wi-Fi.</p>
       <input type="file" accept="image/*" capture="environment" id="pest-photo-input" style="display:none;" onchange="handlePestPhotoSelected(event)">
@@ -715,6 +721,16 @@
         Drop a pin instead of picking a field
       </label>
       <div id="declare-pest-map" style="height:220px;border-radius:var(--radius);overflow:hidden;display:none;margin-bottom:12px;"></div>
+      <div class="form-group">
+        <label class="form-label">Photo evidence (optional)</label>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;">Attaching a photo helps confirm your report is genuine — useful if you're applying for pest-assistance programs from local authorities, since it backs up the declaration with real evidence instead of just a claim.</p>
+        <input type="file" accept="image/*" capture="environment" id="declare-pest-photo-input" style="display:none;" onchange="handleDeclarePestPhotoSelected(event)">
+        <div id="declare-pest-photo-preview" style="display:none;margin-bottom:8px;">
+          <img id="declare-pest-photo-img" style="max-width:160px;border-radius:var(--radius);display:block;margin-bottom:6px;">
+          <button class="btn" style="padding:3px 10px;font-size:13px;" onclick="clearDeclarePestPhoto()">Remove photo</button>
+        </div>
+        <button class="btn" id="declare-pest-photo-btn" onclick="document.getElementById('declare-pest-photo-input').click()"><i class="ti ti-camera" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Attach a photo</button>
+      </div>
       <button class="btn btn-primary" onclick="declarePest()"><i class="ti ti-map-pin" style="font-size:18px;vertical-align:-2px;margin-right:4px;" aria-hidden="true"></i>Declare pest</button>
       <p class="save-msg" id="declare-pest-msg" style="display:none;"><i class="ti ti-check" style="vertical-align:-2px;" aria-hidden="true"></i> Declared!</p>
       <div id="declare-pest-history" style="margin-top:14px;"></div>
@@ -1980,6 +1996,13 @@ const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 const PHASE_BADGE = {prep:'badge-none', planting:'badge-blue', growing:'badge-good', harvest:'badge-warn'};
 const PHASE_COLOR = {prep:'#888780', planting:'#378ADD', growing:'#2FC9A4', harvest:'#C85A0A'};
 
+/* Camera pest-scan (Claude vision) costs money per photo analyzed --
+   shelved as a future pro-tier feature rather than shown to every farmer
+   by default, many of whom are already under real financial strain. The
+   panel, IndexedDB queue, and pest-scan.js backend are all left intact;
+   flipping this to true is the only change needed to bring it back. */
+const PRO_FEATURES_ENABLED = false;
+
 /* ── Pest reference (Philippine sugarcane) ───────────────────────────────
    RSSI is flagged 'active' because it's a real, ongoing national outbreak
    (SRA data, mid-2026) — not just one entry among equals. Sources: SRA
@@ -2063,9 +2086,11 @@ const PEST_OUTBREAK_DATA = [
 /* ── Pests tab ────────────────────────────────────────────────────────── */
 let pestChecklistNode = 'start';
 function renderPestsTab() {
+  const scanPanel = document.getElementById('pest-scan-panel');
+  if (scanPanel) scanPanel.style.display = PRO_FEATURES_ENABLED ? '' : 'none';
+  if (PRO_FEATURES_ENABLED) renderPestScanStatus();
   renderPestChecklist();
   renderPestDatabaseList();
-  renderPestScanStatus();
   populateDeclarePestSelects();
   renderPestDeclareHistory();
   document.getElementById('pest-detail-panel').style.display = 'none';
@@ -2225,6 +2250,7 @@ function hasGoodConnectionForUpload() {
 }
 let pestScanInFlight = false;
 async function tryAnalyzePendingPhotos(manual) {
+  if (!PRO_FEATURES_ENABLED) return; // shelved -- see PRO_FEATURES_ENABLED comment
   if (pestScanInFlight) return;
   const okToTry = manual ? navigator.onLine : hasGoodConnectionForUpload();
   if (!okToTry) return;
@@ -2359,13 +2385,43 @@ function declarePest() {
     if (document.getElementById('tab-fields').style.display !== 'none') renderFieldGrid();
   }
   const declarations = JSON.parse(localStorage.getItem('sc_pest_declarations') || '[]');
-  declarations.push({ id: Date.now(), pestId, fieldName: (fieldName && !usePin) ? fieldName : null, lat: latlng[0], lng: latlng[1], date: todayISO(), synced: false });
+  declarations.push({
+    id: Date.now(), pestId, fieldName: (fieldName && !usePin) ? fieldName : null,
+    lat: latlng[0], lng: latlng[1], date: todayISO(), synced: false,
+    photoDataUrl: declarePestPhotoDataUrl || null, photoUrl: null,
+  });
   localStorage.setItem('sc_pest_declarations', JSON.stringify(declarations));
+  clearDeclarePestPhoto();
   if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2000); }
   renderPestDeclareHistory();
   const mapToggle = document.getElementById('map-pest-toggle');
   if (mapToggle && mapToggle.checked) renderPestSpreadLayer();
   syncPestDeclarations();
+}
+
+/* Photo evidence attached to a declaration -- kept separate from the
+   shelved Claude-vision scan feature above. No AI involved here: the
+   farmer already picks the pest manually, the photo just backs up that
+   the report is genuine (relevant if local authorities offer pest-damage
+   assistance, which real farmers should be able to prove, not fake). */
+let declarePestPhotoDataUrl = null;
+async function handleDeclarePestPhotoSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    declarePestPhotoDataUrl = await resizePhotoToDataUrl(file, 800);
+    document.getElementById('declare-pest-photo-img').src = declarePestPhotoDataUrl;
+    document.getElementById('declare-pest-photo-preview').style.display = '';
+    document.getElementById('declare-pest-photo-btn').style.display = 'none';
+  } catch (e) {
+    console.error('handleDeclarePestPhotoSelected failed:', e);
+  }
+}
+function clearDeclarePestPhoto() {
+  declarePestPhotoDataUrl = null;
+  document.getElementById('declare-pest-photo-preview').style.display = 'none';
+  document.getElementById('declare-pest-photo-btn').style.display = '';
 }
 
 /* Declarations are pushed to a shared (not per-user) Supabase table via
@@ -2383,13 +2439,24 @@ async function syncPestDeclarations() {
     let changed = false;
     for (const rec of declarations) {
       if (rec.synced) continue;
+      // A declaration with an attached photo is a real upload, not a few
+      // bytes of JSON -- respect the same Wi-Fi preference as the (shelved)
+      // photo-scan feature so this doesn't quietly burn a farmer's mobile
+      // data. Plain text-only declarations still go on any connection.
+      if (rec.photoDataUrl && !hasGoodConnectionForUpload()) continue;
       try {
         const res = await fetch('/.netlify/functions/pest-declare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pestId: rec.pestId, lat: rec.lat, lng: rec.lng, date: rec.date }),
+          body: JSON.stringify({ pestId: rec.pestId, lat: rec.lat, lng: rec.lng, date: rec.date, photoDataUrl: rec.photoDataUrl || undefined }),
         });
-        if (res.ok) { rec.synced = true; changed = true; }
+        if (res.ok) {
+          const result = await res.json().catch(() => ({}));
+          rec.synced = true;
+          rec.photoUrl = result.photoUrl || null;
+          rec.photoDataUrl = null; // uploaded -- drop the local base64 copy
+          changed = true;
+        }
       } catch (e) { /* stays unsynced, retried on the next trigger */ }
     }
     if (changed) localStorage.setItem('sc_pest_declarations', JSON.stringify(declarations));
@@ -2407,8 +2474,8 @@ function renderPestDeclareHistory() {
   el.innerHTML = declarations.map(dec => {
     const pest = PEST_DATABASE.find(p => p.id === dec.pestId);
     return `<div class="field-row" style="padding:6px 0;border-bottom:0.5px solid var(--border);">
-      <span>${pest ? pest.name : 'Unknown pest'}${dec.fieldName ? ` — ${dec.fieldName}` : ' — custom location'}</span>
-      <span style="color:var(--text3);font-size:12px;">${shortDate(dec.date)}</span>
+      <span>${pest ? pest.name : 'Unknown pest'}${dec.fieldName ? ` — ${dec.fieldName}` : ' — custom location'}${(dec.photoUrl || dec.photoDataUrl) ? ' <i class="ti ti-camera" style="font-size:14px;vertical-align:-2px;color:var(--text3);" title="Photo evidence attached" aria-hidden="true"></i>' : ''}</span>
+      <span style="color:var(--text3);font-size:12px;">${shortDate(dec.date)}${!dec.synced ? ' · syncing' : ''}</span>
     </div>`;
   }).join('');
 }
@@ -4834,7 +4901,11 @@ async function renderPestSpreadLayer() {
     const pest = PEST_DATABASE.find(p => p.id === dec.pestId);
     const color = pest ? (PEST_RISK_COLOR[pest.risk] || '#888780') : '#888780';
     const marker = L.circleMarker([dec.lat, dec.lng], { radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(newLayerGroup);
-    marker.bindPopup(`<strong>${pest ? pest.name : 'Pest'}</strong> (reported by a farmer)<br><span style="color:#888;font-size:12px;">${dec.date}</span>`);
+    marker.bindPopup(
+      `<strong>${pest ? pest.name : 'Pest'}</strong> (reported by a farmer)<br>` +
+      `${dec.photoUrl ? `<img src="${dec.photoUrl}" style="max-width:160px;border-radius:4px;margin:6px 0;display:block;">` : ''}` +
+      `<span style="color:#888;font-size:12px;">${dec.date}</span>`
+    );
     bounds.push([dec.lat, dec.lng]);
   });
 
@@ -4849,6 +4920,7 @@ async function renderPestSpreadLayer() {
     const marker = L.circleMarker([dec.lat, dec.lng], { radius: 8, color, weight: 2, fillColor: '#fff', fillOpacity: 0.5, dashArray: '3,2' }).addTo(newLayerGroup);
     marker.bindPopup(
       `<strong>${pest ? pest.name : 'Pest'}</strong> (declared by you — syncing)<br>${dec.fieldName || 'Custom location'}<br>` +
+      `${dec.photoDataUrl ? `<img src="${dec.photoDataUrl}" style="max-width:160px;border-radius:4px;margin:6px 0;display:block;">` : ''}` +
       `<span style="color:#888;font-size:12px;">${dec.date}</span>`
     );
     bounds.push([dec.lat, dec.lng]);
