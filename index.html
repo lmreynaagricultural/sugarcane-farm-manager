@@ -413,16 +413,18 @@
         <div class="legend-item"><div class="legend-dot" style="background:#2FC9A4;"></div>Growing</div>
         <div class="legend-item"><div class="legend-dot" style="background:#C85A0A;"></div>Harvest</div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border);">
-        <div>
-          <div style="font-size:15px;font-weight:500;color:var(--text);">Show pest spread</div>
-          <div style="font-size:13px;color:var(--text2);margin-top:2px;">Reported outbreak areas — zoom out to see them relative to your farm.</div>
+      <div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:15px;font-weight:500;color:var(--text);">Pest spread overlay</div>
+            <div style="font-size:13px;color:var(--text2);margin-top:2px;">Reported outbreak areas — zoom out after it loads to see them relative to your farm.</div>
+          </div>
+          <select id="map-pest-select" onchange="onPestSpreadSelectChange()" style="flex-shrink:0;">
+            <option value="off">Hide pest spread</option>
+            <option value="on">Show pest spread</option>
+          </select>
         </div>
-        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:16px;">
-          <input type="checkbox" id="map-pest-toggle" style="opacity:0;width:0;height:0;position:absolute;" onchange="togglePestSpreadLayer()">
-          <span id="map-pest-track" style="position:absolute;inset:0;border-radius:24px;background:var(--border2);transition:background 0.2s;cursor:pointer;" onclick="document.getElementById('map-pest-toggle').click()"></span>
-          <span id="map-pest-thumb" style="position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:white;transition:transform 0.2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
-        </label>
+        <p id="map-pest-loading" style="font-size:13px;color:var(--text2);margin-top:8px;display:none;"><i class="ti ti-loader-2" style="vertical-align:-2px;" aria-hidden="true"></i> Loading pest reports…</p>
       </div>
       <div class="legend" id="map-pest-legend" style="margin-top:10px;display:none;">
         <div class="legend-item"><div class="legend-dot" style="background:#E24B4A;"></div>Severe</div>
@@ -2073,14 +2075,52 @@ const PEST_CHECKLIST = {
 };
 
 /* Manually curated seed data — there is no public SRA API or live feed,
-   so this needs periodic manual updates from SRA/press bulletins. Figures
-   below are SRA-reported estimates as of the dates shown; treat them as
-   illustrative, not authoritative-to-the-day. */
+   so this needs periodic manual updates from SRA/press bulletins (last
+   refreshed 2026-07-22 from SRA/provincial-government/local-news
+   reporting, covering all of Negros Island town-by-town where a figure
+   exists, plus other affected provinces). This is inherently messy: the
+   outbreak moves fast enough that province-wide totals roughly doubled
+   between late May and late June; different outlets validate figures at
+   different times; and at least one earlier version of this file had a
+   bad Cadiz City figure (5,196ha) that turned out to be a conflation from
+   a mismatched source -- the correct figure is ~217ha as of 2026-06-05.
+   Mabinay also has two conflicting figures across sources (7ha in one
+   province-wide breakdown vs ~600ha in another, more recent report) --
+   used the larger/more recent one, flagged here rather than silently
+   picking one. Where no hectare figure was published for a town that's
+   still confirmed affected (Tanjay), hectares is left undefined and the
+   map falls back to a floor radius rather than a guessed number. The
+   community declarations layer (fetched live from pest-declare.js) is
+   the only part of this map that's genuinely current -- this seed data
+   never will be. */
 const PEST_OUTBREAK_DATA = [
+  // Negros Occidental -- province total then each affected city/municipality with a published figure
+  { pestId:'rssi', place:'Negros Occidental (province-wide)', lat:10.6713, lng:122.9511, hectares:61242, severity:'severe', asOf:'2026-06-30' },
   { pestId:'rssi', place:'Kabankalan City, Negros Occidental', lat:9.9878, lng:122.8206, hectares:6686, severity:'severe', asOf:'2026-06-26' },
-  { pestId:'rssi', place:'Cadiz City, Negros Occidental', lat:10.9489, lng:123.2903, hectares:5196, severity:'severe', asOf:'2026-06-26' },
-  { pestId:'rssi', place:'Negros Oriental (province-wide)', lat:9.5000, lng:123.1500, hectares:1571.33, severity:'high', asOf:'2026-06-26' },
-  { pestId:'rssi', place:'Capiz', lat:11.5851, lng:122.7511, hectares:22.03, severity:'low', asOf:'2026-05-29' },
+  { pestId:'rssi', place:'Bago City, Negros Occidental', lat:10.5333, lng:122.8333, hectares:406.02, severity:'high', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'La Castellana, Negros Occidental', lat:10.3833, lng:123.1667, hectares:226.36, severity:'high', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Cadiz City, Negros Occidental', lat:10.9489, lng:123.2903, hectares:216.70, severity:'high', asOf:'2026-06-05' },
+  { pestId:'rssi', place:'Sagay City, Negros Occidental', lat:10.9057, lng:123.4249, hectares:84, severity:'moderate', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Victorias City, Negros Occidental', lat:10.9036, lng:123.0742, hectares:67.59, severity:'moderate', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Manapla, Negros Occidental', lat:10.8167, lng:123.0333, hectares:63.16, severity:'moderate', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Silay City, Negros Occidental', lat:10.7967, lng:122.9761, hectares:55.34, severity:'moderate', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'San Carlos City, Negros Occidental', lat:10.4926, lng:123.4184, hectares:38.80, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Himamaylan City, Negros Occidental', lat:10.0975, lng:122.8697, hectares:16.99, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Escalante City, Negros Occidental', lat:10.8380, lng:123.5088, hectares:16.29, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Isabela, Negros Occidental', lat:10.1990, lng:122.9878, hectares:16.00, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Binalbagan, Negros Occidental', lat:10.1934, lng:122.8631, hectares:0.60, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  // Negros Oriental -- province total then each affected city/municipality
+  { pestId:'rssi', place:'Negros Oriental (province-wide)', lat:9.4000, lng:123.2000, hectares:17125, severity:'severe', asOf:'2026-07 (province declared state of calamity)' },
+  { pestId:'rssi', place:'Bais City, Negros Oriental', lat:9.5878, lng:123.1218, hectares:1700, severity:'severe', asOf:'2026-07-01 (declared its own local state of calamity)' },
+  { pestId:'rssi', place:'Tanjay City, Negros Oriental', lat:9.5167, lng:123.1667, severity:'severe', asOf:'2026-07 (declared state of calamity; exact hectares not yet published)' },
+  { pestId:'rssi', place:'Mabinay, Negros Oriental', lat:9.7167, lng:123.0667, hectares:600, severity:'high', asOf:'2026-07 (see conflicting-figures note above)' },
+  { pestId:'rssi', place:'Bayawan City, Negros Oriental', lat:9.3653, lng:122.8017, hectares:85.30, severity:'moderate', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Canlaon City, Negros Oriental', lat:10.3833, lng:123.2167, hectares:26.60, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Guihulngan City, Negros Oriental', lat:10.1167, lng:123.2833, hectares:18, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  { pestId:'rssi', place:'Vallehermoso, Negros Oriental', lat:10.2167, lng:123.1833, hectares:13.80, severity:'low', asOf:'2026-06 (exact date uncertain)' },
+  // Beyond Negros Island -- confirms the spread isn't contained to Negros
+  { pestId:'rssi', place:'Iloilo (province)', lat:10.7202, lng:122.5621, hectares:45.80, severity:'low', asOf:'2026-06-26' },
+  { pestId:'rssi', place:'Capiz (province)', lat:11.5851, lng:122.7511, hectares:22.03, severity:'low', asOf:'2026-05-29' },
 ];
 
 /* ── Pests tab ────────────────────────────────────────────────────────── */
@@ -2394,8 +2434,7 @@ function declarePest() {
   clearDeclarePestPhoto();
   if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2000); }
   renderPestDeclareHistory();
-  const mapToggle = document.getElementById('map-pest-toggle');
-  if (mapToggle && mapToggle.checked) renderPestSpreadLayer();
+  if (showPestSpread) renderPestSpreadLayer();
   syncPestDeclarations();
 }
 
@@ -4846,20 +4885,24 @@ function renderMapTab() {
    translucent circles (not precise field-level markers) since the
    underlying data is a municipality/province-level aggregate, not an
    exact infested plot -- the popup text says so explicitly. */
+/* A dropdown instead of a toggle switch, deliberately -- the previous
+   instant on/off toggle gave no feedback while the community-declarations
+   fetch was still in flight, which read as broken ("turns on but doesn't
+   revert"). A select forces a distinct "Show pest spread" pick and pairs
+   with an explicit loading line, so the wait for real data is visible
+   instead of silent. */
 let showPestSpread = localStorage.getItem('sc_show_pest_spread') === '1';
 let pestLayerGroup = null;
 function syncPestToggleUI() {
-  const t = document.getElementById('map-pest-toggle');
-  const track = document.getElementById('map-pest-track');
-  const thumb = document.getElementById('map-pest-thumb');
+  const sel = document.getElementById('map-pest-select');
   const legend = document.getElementById('map-pest-legend');
-  if (t) t.checked = showPestSpread;
-  if (track) track.style.background = showPestSpread ? 'var(--green)' : 'var(--border2)';
-  if (thumb) thumb.style.transform = showPestSpread ? 'translateX(20px)' : 'translateX(0)';
+  const loading = document.getElementById('map-pest-loading');
+  if (sel) sel.value = showPestSpread ? 'on' : 'off';
   if (legend) legend.style.display = showPestSpread ? 'flex' : 'none';
+  if (loading) loading.style.display = 'none'; // renderPestSpreadLayer shows it again while it's actually working
 }
-function togglePestSpreadLayer() {
-  showPestSpread = document.getElementById('map-pest-toggle').checked;
+function onPestSpreadSelectChange() {
+  showPestSpread = document.getElementById('map-pest-select').value === 'on';
   localStorage.setItem('sc_show_pest_spread', showPestSpread ? '1' : '0');
   syncPestToggleUI();
   renderPestSpreadLayer();
@@ -4868,9 +4911,11 @@ let pestLayerGeneration = 0;
 async function renderPestSpreadLayer() {
   const myGen = ++pestLayerGeneration;
   const map = fieldsMapInstances['fields-map-full'];
+  const loadingEl = document.getElementById('map-pest-loading');
   if (!map) return;
   if (pestLayerGroup) { try { map.removeLayer(pestLayerGroup); } catch (e) {} pestLayerGroup = null; }
-  if (!showPestSpread) return;
+  if (!showPestSpread) { if (loadingEl) loadingEl.style.display = 'none'; return; }
+  if (loadingEl) loadingEl.style.display = '';
 
   const newLayerGroup = L.layerGroup();
   const bounds = [];
@@ -4896,7 +4941,7 @@ async function renderPestSpreadLayer() {
     const res = await fetch('/.netlify/functions/pest-declare');
     if (res.ok) { const j = await res.json(); community = j.declarations || []; }
   } catch (e) { /* offline or function unreachable -- just skip this layer for now */ }
-  if (myGen !== pestLayerGeneration || !showPestSpread) return; // toggled off / superseded while awaiting the fetch
+  if (myGen !== pestLayerGeneration || !showPestSpread) { if (loadingEl) loadingEl.style.display = 'none'; return; } // toggled off / superseded while awaiting the fetch
   community.forEach(dec => {
     const pest = PEST_DATABASE.find(p => p.id === dec.pestId);
     const color = pest ? (PEST_RISK_COLOR[pest.risk] || '#888780') : '#888780';
@@ -4928,6 +4973,7 @@ async function renderPestSpreadLayer() {
 
   newLayerGroup.addTo(map);
   pestLayerGroup = newLayerGroup;
+  if (loadingEl) loadingEl.style.display = 'none';
   if (settings.lat && settings.lng) bounds.push([parseFloat(settings.lat), parseFloat(settings.lng)]);
   if (bounds.length > 1) { try { map.fitBounds(bounds, { padding: [40, 40] }); } catch (e) {} }
 }
