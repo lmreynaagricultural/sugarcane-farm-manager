@@ -2,7 +2,7 @@
 
 Read this first if you're a fresh Claude Code session picking this project back up with no memory of prior work. It's kept in the repo root so it survives cache loss.
 
-**Last updated:** 2026-07-21, after commit `00dd85a` ("Add subtle update-available banner for installed PWAs").
+**Last updated:** 2026-07-23, after commit `5173cca` ("Fix pest-spread circle sizing -- was radius-scaled, now area-scaled").
 
 ## What this is
 
@@ -16,10 +16,12 @@ The user (Lance Reyna) is non-technical-facing but tests every change live on hi
 |---|---|
 | `index.html` | The entire app: UI, styles, all client logic. Edit this for almost everything. |
 | `onboarding.html` | Standalone full onboarding guide (real DOCTYPE/head/body page, not a fragment). Opened by the "?" header button in a new tab. Built from a Claude Artifact — see "Onboarding guide" below before touching it. |
-| `sw.js` | Service worker. Cache-first for app-shell files, network-first for everything else (weather API, map tiles, CDN scripts). **`CACHE_NAME` must be bumped on every deploy that changes `index.html`, `onboarding.html`, `manifest.json`, or the icons** — the app shell is cache-first, so without a bump returning users keep the old version indefinitely. Current value: `sugarcane-farm-v20`. |
+| `sw.js` | Service worker. Cache-first for app-shell files, network-first for everything else (weather API, map tiles, CDN scripts). **`CACHE_NAME` must be bumped on every deploy that changes `index.html`, `onboarding.html`, `manifest.json`, or the icons** — the app shell is cache-first, so without a bump returning users keep the old version indefinitely. Current value: `sugarcane-farm-v28`. |
 | `manifest.json` | PWA manifest — install-to-home-screen metadata, brand colors. |
 | `functions/sync.js` | Netlify Function — cloud sync to Supabase. Reads `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` from Netlify env vars. |
 | `functions/log.js` | Netlify Function — client error logging to a Supabase table. Same env vars. |
+| `functions/pest-scan.js` | Netlify Function — Claude vision pest photo identification. **Currently shelved** (see Pests tab section below) — deployed and reachable but gated off in the client by `PRO_FEATURES_ENABLED = false`. Needs `ANTHROPIC_API_KEY` in Netlify env vars whenever it's turned back on. |
+| `functions/pest-declare.js` | Netlify Function — shared (not per-user) cross-farm pest-sighting dataset. GET returns recent community declarations, POST records a new one (with an optional photo upload to Supabase Storage). No auth required, works for anonymous/local-only users. Needs the `pest_declarations` table + `pest-photos` Storage bucket — see "Pests tab" below. |
 | `package.json` (root, **not** inside `functions/`) | Holds `@supabase/supabase-js`. Netlify does NOT auto-install a Function's own `functions/package.json` deps — this bit us once already (see Known gotchas). |
 | `netlify.toml` | `functions = "functions"`, `node_bundler = "esbuild"`. |
 
@@ -103,6 +105,29 @@ Installed PWAs can stay open for days, so the app now checks for a new service w
 - World Radio easter egg in Settings (`RADIO_API_HOSTS`, `loadRadioStations()`, HTTPS-only streams).
 - Install-to-home-screen button (`installApp()`, `#hdr-install-btn`, wired to `beforeinstallprompt`/`appinstalled`).
 
-## Nothing is currently pending
+## Pests tab / RSSI outbreak feature (shipped, commits `05f2a4d` through `5173cca`)
 
-As of `00dd85a`, all requested work (401 fix, brand rebrand, moisture correlation, bulk stage update, mobile tabs/swipe, onboarding carousel + full guide + help button, auto-update banner) is shipped and confirmed live on production. If you're reading this because a session got cut, there's no unfinished thread to pick back up — just ask the user what's next, or check `git log` for anything past this file's "last updated" commit if time has passed.
+Built in response to a real, ongoing 2026 national crisis: the red-striped soft scale insect (RSSI, *Pulvinaria tenuivalvata*) has infested large areas of Negros Island sugarcane, including the user's own municipality (Bais City, Negros Oriental — which declared its own local state of calamity). This is not a hypothetical feature; treat pest-data accuracy as genuinely consequential.
+
+- **New "Pests" tab** (between Fields and Workers): a 9-pest reference database (`PEST_DATABASE`, RSSI flagged `active:true` since it's the current real outbreak), a guided offline symptom checklist (`PEST_CHECKLIST` decision tree, no camera/connectivity needed), and a **"Declare a pest"** form.
+- **Declare a pest**: dropdown sorted by risk (active outbreaks first), pick an existing field (uses its traced boundary centroid or unmeasured-pin location) or drop a custom pin on a mini Leaflet map. Tying it to a field sets `data[field].declaredPest`, which both `getStatus()` and `fieldCardRows()` read — a declared severe/high-risk pest immediately shows as that field's health badge. Can optionally attach a photo as evidence (see below).
+- **Community pest-spread map layer**: a dropdown on the Map tab ("Hide/Show pest spread" — deliberately a `<select>`, not a toggle switch, see gotcha below) overlays three kinds of data on the fields map: (1) translucent circles from `PEST_OUTBREAK_DATA` — manually curated SRA/press figures, town-by-town across Negros Occidental + Negros Oriental + Iloilo/Capiz, refreshed 2026-07-22/23; (2) solid pins from every farmer's synced declarations via `pest-declare.js` (shared Supabase table, not per-user); (3) hollow dashed pins for this device's own not-yet-synced declarations. Only one of the pest-severity legend or the field-stage legend shows at a time (`#map-stage-legend` / `#map-pest-legend-wrap`), swapped by the same dropdown — they used to both show at once and shared colors (orange, gray), which read as ambiguous.
+- **Camera pest-scan — shelved as a future pro feature.** `functions/pest-scan.js` (Claude vision) is fully built and deployed, but gated off by `const PRO_FEATURES_ENABLED = false;` in `index.html` — the panel stays hidden, `tryAnalyzePendingPhotos()` early-returns, no network activity happens. This was a deliberate call: Claude vision costs money per photo, and the user explicitly didn't want that cost/upsell risk imposed on farmers by default, many of whom are financially strained. Don't re-enable without asking — if you do, it also needs `ANTHROPIC_API_KEY` set in Netlify env vars.
+- **Photo evidence on declarations (not the same as the shelved scan feature)**: the Declare-a-pest form has its own separate, always-on "attach a photo" option — no AI involved, just uploads to Supabase Storage and links the URL to the declaration row. Purpose: if local authorities offer pest-damage assistance programs, a farmer's declaration should be provable, not just an unverified claim.
+
+**Pending manual step**: `C:\Users\msiba\Desktop\Sessions\pest_declarations_schema.sql` needs to be run in the Supabase SQL editor (creates the `pest_declarations` table + `pest-photos` Storage bucket) before community declarations/photos actually persist. Safe to re-run, it's idempotent. `pest-declare.js` was reachable and returning its own controlled error ("Failed to load pest declarations") rather than crashing, last checked — that's expected until the migration runs.
+
+**Gotchas specific to this feature:**
+- **Circle sizing is area-accurate, not radius-accurate.** `radiusM = Math.max(1500, Math.sqrt((hectares||25)/(100*Math.PI))*1000)` — the circle's *area* matches the reported hectares converted to km². An earlier version scaled radius directly off hectares (`sqrt(ha)*250`), which made a 61,242ha figure render as a ~124km-diameter disc and looked like a blanket-infested region — genuinely alarming and misleading, since that many hectares is scattered across many separate farms (some not even sugarcane) within a much wider area, not one contiguous zone. If you touch this formula again, keep it area-based.
+- **`PEST_OUTBREAK_DATA` mixes SRA/press-validated figures with owner-reported ones.** Entries with `ownerReported:true` (four southern Negros Oriental towns Lance's own local research flagged, with no published SRA figures) render as dashed circles and say so explicitly in the popup — never blend these visually or textually with the officially-sourced entries.
+- **"Validated" vs "reported" SRA figures are genuinely different numbers** for the same place/date in different press sources — a BusinessMirror report (2026-06-24) was the one source found that explicitly separates field-confirmed validated figures from broader preliminary reported totals. Per-town entries in the data use validated figures where available; province-wide entries use the larger reported total. Read the comment block directly above `PEST_OUTBREAK_DATA` before editing it — it documents specific past mistakes (a since-fixed Cadiz City figure that was off by ~24x from a mismatched source).
+- **This data has no live feed and will drift stale.** There is no public SRA API — refreshing it means re-searching press coverage by hand. Don't assume it's current without checking the `asOf` dates.
+- **`renderPestSpreadLayer()` is async** (awaits a `fetch` to `pest-declare.js`) and guards against stale/superseded calls via a `pestLayerGeneration` counter — if you modify it, preserve that guard or rapid dropdown changes can race.
+
+## Nothing else is currently pending on the app itself
+
+As of `5173cca`, all requested sugarcane-app work is shipped and confirmed live on production, aside from the Supabase SQL migration above (user action, not code). If you're reading this because a session got cut, check the Pests-tab section first for open threads, then `git log` for anything past this file's "last updated" commit.
+
+## Other active workstream (separate repo/context, mentioned here for awareness)
+
+The user is also running a JobStreet.ph job-search automation (applying to remote VA/EA/CRM roles) to fund himself while building this app, with its own handover doc and Google Sheets tracker — unrelated to this codebase, but explains why he's cost-sensitive about anything that adds ongoing dollar expense (see the shelved pest-scan feature above). Not something a session picking up this repo needs to act on, just useful context for why certain product calls were made.
